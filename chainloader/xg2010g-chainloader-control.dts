@@ -1,0 +1,9 @@
+/dts-v1/;
+
+/ {
+	compatible = "airoha,xg2010g-chainloader-control";
+	fit-base = <0x81800000>;
+	payload-node = "uboot@1";
+	fallback-payload-load = <0x81e00000>;
+	fallback-payload-entry = <0x81e00000>;
+};

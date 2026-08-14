@@ -1,0 +1,94 @@
+// SPDX-License-Identifier: GPL-2.0+
+/*
+ * XG2010G U-Boot overrides (auto-included after xg2010g.dts).
+ *
+ * GPIO/PHY facts used by this board description:
+ *   - gpio0 = gpio@1fbf0200 base 0, gpio1 = gpio@1fbf0270 base 32;
+ *     phandle 0x0e/0x0f are not gpio bases.
+ *   - RTL8261N resets: phy@5 = GPIO29, phy@8 = GPIO27 (active-low, C45).
+ *   - EN8811H @0xf reset GPIO31 (stock preinit exports it).
+ *   - NAND = Winbond W25N04K 512 MiB (0x20000000).
+ */
+
+#include "an7581-u-boot.dtsi"
+
+/ {
+	/*
+	 * The stock first-stage loader does not populate RAM size for the
+	 * second-stage image, so describe the verified 1 GiB layout here.
+	 */
+	memory@80000000 {
+		device_type = "memory";
+		reg = <0x0 0x80000000 0x0 0x40000000>;
+	};
+
+	/*
+	 * XG2010G exposes the external RTL8261 PHYs on the FE MDIO
+	 * controller (TTL L1321..1330). PHY 5 (ETH SerDes) is the 10 GbE
+	 * combo LAN1/WAN jack serviced by GDM4 (hsgmii_lan_eth, eth0.8,
+	 * plug test) - it is the stock WAN uplink and is NEVER a recovery
+	 * port; PHY 8 (PCIE1 SerDes) is the independent RTL8261 10 GbE LAN2
+	 * port serviced by GDM3 (hsgmii_lan_pcie1, eth0.7, plug test) and is
+	 * a recovery port. EN8811H @0xf (USB SerDes / GDM4 nbq1) is LAN3.
+	 */
+	mdio-bus {
+		compatible = "airoha,arht-mdio";
+		#address-cells = <1>;
+		#size-cells = <0>;
+
+		phy5: ethernet-phy@5 {
+			compatible = "ethernet-phy-ieee802.3-c45";
+			reg = <5>;
+			reset-gpios = <&en7581_pinctrl 29 GPIO_ACTIVE_LOW>;
+			reset-assert-us = <40000>;
+			reset-deassert-us = <150000>;
+			realtek,pnswap-tx;
+			realtek,pnswap-rx;
+		};
+
+		phy8: ethernet-phy@8 {
+			compatible = "ethernet-phy-ieee802.3-c45";
+			reg = <8>;
+			reset-gpios = <&en7581_pinctrl 27 GPIO_ACTIVE_LOW>;
+			reset-assert-us = <40000>;
+			reset-deassert-us = <150000>;
+			realtek,pnswap-tx;
+			realtek,pnswap-rx;
+		};
+
+		/*
+		 * LAN3 2.5G: Airoha EN8811H at MDIO addr 0xf on the FE bus
+		 * (stock TTL "mdio-bus--1:0f", L1567), USB SerDes 2.5G
+		 * xSGMII, reset GPIO 31 (TTL L1555 "7581 reset 8811").
+		 * U-Boot has no EN8811H driver; resetting the PHY here keeps
+		 * it out of download-mode hang, link check is best-effort.
+		 */
+		phyf: ethernet-phy@f {
+			compatible = "ethernet-phy-ieee802.3-c45";
+			reg = <0xf>;
+			reset-gpios = <&en7581_pinctrl 31 GPIO_ACTIVE_LOW>;
+			reset-assert-us = <10000>;
+			reset-deassert-us = <20000>;
+		};
+	};
+};
+
+&snfi {
+	status = "okay";
+};
+
+&switch {
+	status = "okay";
+	pinctrl-names = "default";
+	pinctrl-0 = <&mdio_pins>;
+	/*
+	 * Keep the native port-to-PHY mapping: the SoC-internal GbE
+	 * switch ePHYs sit at addresses 9-12 (TTL L1351..1475; only ePHY 9
+	 * / LAN4 is physically wired). External PHY 5 (GDM4), PHY 8 (GDM3)
+	 * and EN8811H @0xf (GDM4/USB) are serviced directly by their GDM
+	 * MACs on the FE MDIO bus and must not shift the switch auto-poll
+	 * window.
+	 */
+	airoha,phy-poll-start = <8>;
+	airoha,phy-poll-end = <12>;
+};

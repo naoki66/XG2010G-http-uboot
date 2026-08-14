@@ -1,0 +1,252 @@
+// SPDX-License-Identifier: (GPL-2.0-only OR BSD-2-Clause)
+/*
+ * XG2010G (ECONET EN7581 / Gemtek) U-Boot board DTS.
+ *
+ * GPIO numbering is the absolute SoC number: bank A = gpio@1fbf0200 (0-31),
+ * bank B = gpio@1fbf0270 (32-63):
+ *   sts_white=33  phy_tx_power_disable=38  lan_led_yellow=42
+ *   sts_red=43    sts_green=44             sts_blue=45
+ *   lan_led_green=46  pon_act_green=14  pon_lnk_green=15  pon_lnk_red=16
+ *   reset key=0      RTL8261N resets=29/27  EN8811H reset=31
+ * Pins 17-20 are HW_ID0-3 straps on this board; the stock /userfs
+ * 7581ptled.conf ledctrl paths (gpio 18/19/20 = xponStatus/xponLos/internet
+ * on the reference EVB) have no visible hardware here, hence they are not
+ * declared as LEDs.
+ */
+/dts-v1/;
+
+/* Bootloader installs ATF here */
+/memreserve/ 0x80000000 0x200000;
+
+#include <dt-bindings/gpio/gpio.h>
+#include <dt-bindings/input/input.h>
+#include <dt-bindings/interrupt-controller/irq.h>
+#include <dt-bindings/leds/common.h>
+#include "en7581.dtsi"
+
+/ {
+	model = "XG2010G";
+	compatible = "econet,xg2010g", "econet,xg2010g-ubi",
+		     "gemtek,xg2010g", "gemtek,xg2010g-ubi",
+		     "econet,en7581", "airoha,an7581",
+		     "airoha,en7581";
+	recovery-gpios = <&en7581_pinctrl 0 GPIO_ACTIVE_LOW>;
+	recovery-green-led-gpios = <&en7581_pinctrl 46 GPIO_ACTIVE_LOW>,
+				   <&en7581_pinctrl 44 GPIO_ACTIVE_LOW>;
+	recovery-yellow-led-gpios = <&en7581_pinctrl 42 GPIO_ACTIVE_LOW>,
+				    <&en7581_pinctrl 33 GPIO_ACTIVE_LOW>;
+
+	aliases {
+		serial0 = &uart1;
+		led-boot = &led_status_red;
+		led-failsafe = &led_status_blue;
+		led-upgrade = &led_status_blue;
+		led-running = &led_status_green;
+	};
+
+	chosen {
+		rootdisk = <&ubi_rootfs>;
+		bootargs = "console=ttyS0,115200 earlycon ubi.block=0,fit root=/dev/fit0 rootwait";
+		stdout-path = "serial0:115200n8";
+		/* 1 GiB DDR minus 2 MiB ATF reserve at 0x80000000 */
+		linux,usable-memory-range = <0x0 0x80200000 0x0 0x3fe00000>;
+	};
+
+	memory@80000000 {
+		device_type = "memory";
+		reg = <0x0 0x80000000 0x0 0x40000000>;
+	};
+
+	keys {
+		compatible = "gpio-keys";
+
+		key-restart {
+			label = "reset";
+			gpios = <&en7581_pinctrl 0 GPIO_ACTIVE_LOW>;
+			linux,code = <KEY_RESTART>;
+		};
+	};
+
+	leds {
+		compatible = "gpio-leds";
+
+		led_pon_act_green: led-pon-act-green {
+			color = <LED_COLOR_ID_GREEN>;
+			function = LED_FUNCTION_WAN;
+			function-enumerator = <0>;
+			gpios = <&en7581_pinctrl 14 GPIO_ACTIVE_LOW>;
+		};
+
+		led_pon_lnk_green: led-pon-lnk-green {
+			color = <LED_COLOR_ID_GREEN>;
+			function = LED_FUNCTION_WAN_ONLINE;
+			gpios = <&en7581_pinctrl 15 GPIO_ACTIVE_LOW>;
+		};
+
+		led_pon_lnk_red: led-pon-lnk-red {
+			color = <LED_COLOR_ID_RED>;
+			function = LED_FUNCTION_WAN;
+			function-enumerator = <1>;
+			gpios = <&en7581_pinctrl 16 GPIO_ACTIVE_LOW>;
+		};
+
+		led_phy_tx_power_disable: led-phy-tx-power-disable {
+			color = <LED_COLOR_ID_YELLOW>;
+			function = LED_FUNCTION_ACTIVITY;
+			function-enumerator = <0>;
+			/* stock DTS: active-high, default on (laser shutdown hint) */
+			gpios = <&en7581_pinctrl 38 GPIO_ACTIVE_HIGH>;
+			default-state = "on";
+		};
+
+		led_status_green: led-status-green {
+			color = <LED_COLOR_ID_GREEN>;
+			function = LED_FUNCTION_STATUS;
+			gpios = <&en7581_pinctrl 44 GPIO_ACTIVE_LOW>;
+		};
+
+		led_status_blue: led-status-blue {
+			color = <LED_COLOR_ID_BLUE>;
+			function = LED_FUNCTION_STATUS;
+			gpios = <&en7581_pinctrl 45 GPIO_ACTIVE_LOW>;
+		};
+
+		led_status_red: led-status-red {
+			color = <LED_COLOR_ID_RED>;
+			function = LED_FUNCTION_STATUS;
+			gpios = <&en7581_pinctrl 43 GPIO_ACTIVE_LOW>;
+			default-state = "on";
+		};
+
+		led_status_white: led-status-white {
+			color = <LED_COLOR_ID_WHITE>;
+			function = LED_FUNCTION_STATUS;
+			gpios = <&en7581_pinctrl 33 GPIO_ACTIVE_LOW>;
+		};
+
+		led_lan_green: led-lan-green {
+			color = <LED_COLOR_ID_GREEN>;
+			function = LED_FUNCTION_LAN;
+			function-enumerator = <1>;
+			gpios = <&en7581_pinctrl 46 GPIO_ACTIVE_LOW>;
+		};
+
+		led_lan_yellow: led-lan-yellow {
+			color = <LED_COLOR_ID_YELLOW>;
+			function = LED_FUNCTION_LAN;
+			function-enumerator = <1>;
+			gpios = <&en7581_pinctrl 42 GPIO_ACTIVE_LOW>;
+		};
+	};
+};
+
+&en7581_pinctrl {
+	gpio-ranges = <&en7581_pinctrl 0 13 47>;
+
+	mdio_pins: mdio-pins {
+		mux {
+			function = "mdio";
+			groups = "mdio";
+		};
+
+		conf {
+			pins = "gpio2";
+			output-high;
+		};
+	};
+};
+
+&spi_nand {
+	#address-cells = <1>;
+	#size-cells = <1>;
+
+	partitions {
+		compatible = "fixed-partitions";
+		#address-cells = <1>;
+		#size-cells = <1>;
+
+		partition@0 {
+			label = "vendor";
+			reg = <0x00000000 0x00600000>;
+			read-only;
+		};
+
+		partition@600000 {
+			label = "chainloader";
+			reg = <0x00600000 0x00100000>;
+			read-only;
+		};
+
+		partition@700000 {
+			label = "ubi";
+			reg = <0x00700000 0x1b600000>;
+			compatible = "linux,ubi";
+
+			volumes {
+				ubi-volume-ubootenv {
+					volname = "ubootenv";
+
+					nvmem-layout {
+						compatible = "u-boot,env-redundant-bool";
+					};
+				};
+
+				ubi-volume-ubootenv2 {
+					volname = "ubootenv2";
+
+					nvmem-layout {
+						compatible = "u-boot,env-redundant-bool";
+					};
+				};
+
+				ubi_rootfs: ubi-volume-fit {
+					volname = "fit";
+				};
+			};
+		};
+
+		/*
+		 * Original XG2010G ART partition (BOSA calibration at 0x5000).
+		 * Kept read-only; the vendor bootloader expects it at this offset.
+		 */
+		partition@1bd00000 {
+			label = "art";
+			reg = <0x1bd00000 0x00300000>;
+			read-only;
+		};
+
+		/*
+		 * Reserve the final 512 128 KiB eraseblocks (64 MiB) for
+		 * the vendor bootloader's BMT/BBT handling on SPI-NAND.
+		 */
+		reserved_bmt@1c000000 {
+			label = "reserved_bmt";
+			reg = <0x1c000000 0x04000000>;
+			read-only;
+		};
+	};
+};
+
+&i2c0 {
+	status = "okay";
+};
+
+/*
+ * XG2010G ships without a WiFi module on PCIe. Keep the PCIe controllers
+ * disabled (default in en7581.dtsi); they are not wired to anything.
+ */
+&pcie0 {
+	status = "disabled";
+};
+
+&pcie1 {
+	status = "disabled";
+};
+
+&eth {
+	status = "okay";
+};
+
+&gdm1 {
+	status = "okay";
+};
