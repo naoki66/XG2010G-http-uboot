@@ -40,9 +40,6 @@ DECLARE_GLOBAL_DATA_PTR;
 #define XG2010G_FACTORY_VOL		"factory"
 #define XG2010G_DSD_OFFSET		0x400000
 #define XG2010G_DSD_ENV_SIZE		0x1000
-#define XG2010G_DSD_EEPROM_OFFSET	(XG2010G_DSD_OFFSET + 0x5000)
-#define XG2010G_EEPROM_SIZE		0x1e00
-#define XG2010G_FACTORY_EEPROM_OFFSET	0x0000
 #define XG2010G_FACTORY_WAN_MAC_OFFSET	0x5000
 #define XG2010G_FACTORY_LAN_MAC_OFFSET	0x6000
 #define XG2010G_FACTORY_SIZE		(XG2010G_FACTORY_LAN_MAC_OFFSET + ARP_HLEN)
@@ -186,25 +183,6 @@ static int xg2010g_read_vendor_data(size_t offset, size_t size, void *buf)
 		return ret;
 	if (retlen != size)
 		return -EIO;
-
-	return 0;
-}
-
-static int xg2010g_read_dsd_eeprom(u8 *buf)
-{
-	int ret;
-
-	ret = xg2010g_read_vendor_data(XG2010G_DSD_EEPROM_OFFSET,
-				       XG2010G_EEPROM_SIZE, buf);
-	if (ret)
-		return ret;
-
-	/*
-	 * Stock calibration blobs start with the MT7990 chip ID. Refuse to
-	 * overwrite the target volume when the DSD payload does not look sane.
-	 */
-	if (buf[0] != 0x90 || buf[1] != 0x79)
-		return -EINVAL;
 
 	return 0;
 }
@@ -467,13 +445,6 @@ int xg2010g_sync_factory_part(const char *part)
 	memset(src, 0xff, XG2010G_FACTORY_SIZE);
 	wan_mac = src + XG2010G_FACTORY_WAN_MAC_OFFSET;
 	lan_mac = src + XG2010G_FACTORY_LAN_MAC_OFFSET;
-
-	ret = xg2010g_read_dsd_eeprom(src + XG2010G_FACTORY_EEPROM_OFFSET);
-	if (ret) {
-		printf("XG2010G: failed to read Wi-Fi EEPROM from DSD: %d\n",
-		       ret);
-		goto out;
-	}
 
 	ret = xg2010g_get_dsd_ethaddrs(lan_mac, wan_mac);
 	if (ret) {
