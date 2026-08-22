@@ -29,6 +29,7 @@
 *.i
 *.img
 *.itb
+*.ub
 *.lex.c
 *.lst
 *.map
