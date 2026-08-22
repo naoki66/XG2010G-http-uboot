@@ -14,6 +14,8 @@
 #include <mtd.h>
 #include <net-common.h>
 #include <ubi_uboot.h>
+#undef crc32
+#include <u-boot/crc.h>
 #include <xg2010g_version.h>
 #include <linux/bitops.h>
 #include <linux/err.h>
@@ -35,10 +37,13 @@ DECLARE_GLOBAL_DATA_PTR;
 #define XG2010G_REG_GPIO_DATA1		0x0070
 #define XG2010G_REG_GPIO_OE1		0x0078
 
-#define XG2010G_VENDOR_PART		"vendor"
-#define XG2010G_UBI_PART		"ubi"
+#define XG2010G_DSD_PART		"dsd"
+#define XG2010G_UENV_PART		"uenv"
+#define XG2010G_UENV_SIZE		0x4000
+#define XG2010G_UENV_ERASE_SIZE	0x40000
+#define XG2010G_UENV_DATA_SIZE		(XG2010G_UENV_SIZE - sizeof(u32))
+#define XG2010G_UBI_PART		"system"
 #define XG2010G_FACTORY_VOL		"factory"
-#define XG2010G_DSD_OFFSET		0x400000
 #define XG2010G_DSD_ENV_SIZE		0x1000
 #define XG2010G_FACTORY_WAN_MAC_OFFSET	0x5000
 #define XG2010G_FACTORY_LAN_MAC_OFFSET	0x6000
@@ -166,14 +171,14 @@ static int xg2010g_recovery_button_pressed_raw(ofnode root)
 	return gpio_flags & GPIO_ACTIVE_LOW ? !ret : ret;
 }
 
-static int xg2010g_read_vendor_data(size_t offset, size_t size, void *buf)
+static int xg2010g_read_dsd_data(size_t offset, size_t size, void *buf)
 {
 	struct mtd_info *mtd;
 	size_t retlen = 0;
 	int ret;
 
 	mtd_probe_devices();
-	mtd = get_mtd_device_nm(XG2010G_VENDOR_PART);
+	mtd = get_mtd_device_nm(XG2010G_DSD_PART);
 	if (IS_ERR_OR_NULL(mtd))
 		return IS_ERR(mtd) ? PTR_ERR(mtd) : -ENODEV;
 
@@ -185,6 +190,143 @@ static int xg2010g_read_vendor_data(size_t offset, size_t size, void *buf)
 		return -EIO;
 
 	return 0;
+}
+
+static bool xg2010g_uenv_is_recovery_trigger(const char *entry, size_t len)
+{
+	static const char name[] = "recovery_trigger=";
+
+	return len == sizeof(name) && !memcmp(entry, name, sizeof(name) - 1) &&
+	       entry[sizeof(name) - 1] == '1';
+}
+
+static int xg2010g_uenv_write_block(struct mtd_info *mtd, const u8 *buf)
+{
+	struct erase_info erase = {
+		.mtd = mtd,
+		.addr = 0,
+		.len = XG2010G_UENV_ERASE_SIZE,
+	};
+	size_t offset = 0;
+	int ret;
+
+	ret = mtd_erase(mtd, &erase);
+	if (ret)
+		return ret;
+
+	while (offset < XG2010G_UENV_ERASE_SIZE) {
+		size_t retlen = 0;
+		size_t len = min_t(size_t, mtd->writesize,
+				   XG2010G_UENV_ERASE_SIZE - offset);
+
+		ret = mtd_write(mtd, offset, len, &retlen, buf + offset);
+		if (ret)
+			return ret;
+		if (retlen != len)
+			return -EIO;
+
+		offset += len;
+	}
+
+	return 0;
+}
+
+/* Consume the chainloader-private one-shot flag from the U-Boot environment. */
+static int xg2010g_uenv_consume_recovery_trigger(bool *triggered)
+{
+	struct mtd_info *mtd;
+	u8 *block = NULL, *verify = NULL;
+	u8 *data, *src, *dst, *end;
+	u32 stored_crc, calculated_crc;
+	size_t retlen = 0;
+	int ret = 0;
+
+	*triggered = false;
+	mtd_probe_devices();
+	mtd = get_mtd_device_nm(XG2010G_UENV_PART);
+	if (IS_ERR_OR_NULL(mtd))
+		return IS_ERR(mtd) ? PTR_ERR(mtd) : -ENODEV;
+
+	if (mtd->size < XG2010G_UENV_ERASE_SIZE ||
+	    !mtd->writesize || XG2010G_UENV_ERASE_SIZE % mtd->writesize) {
+		ret = -EINVAL;
+		goto out;
+	}
+
+	block = malloc(XG2010G_UENV_ERASE_SIZE);
+	verify = malloc(XG2010G_UENV_SIZE);
+	if (!block || !verify) {
+		ret = -ENOMEM;
+		goto out;
+	}
+
+	ret = mtd_read(mtd, 0, XG2010G_UENV_ERASE_SIZE, &retlen, block);
+	if ((ret && ret != -EUCLEAN) || retlen != XG2010G_UENV_ERASE_SIZE) {
+		if (!ret)
+			ret = -EIO;
+		goto out;
+	}
+	ret = 0;
+
+	memcpy(&stored_crc, block, sizeof(stored_crc));
+	data = block + sizeof(stored_crc);
+	calculated_crc = crc32(0, data, XG2010G_UENV_DATA_SIZE);
+	if (stored_crc != calculated_crc) {
+		ret = -EBADMSG;
+		goto out;
+	}
+
+	src = data;
+	dst = data;
+	end = data + XG2010G_UENV_DATA_SIZE;
+	while (src < end && *src) {
+		size_t len = strnlen((char *)src, end - src);
+
+		if (src + len == end) {
+			ret = -EINVAL;
+			goto out;
+		}
+
+		if (xg2010g_uenv_is_recovery_trigger((char *)src, len)) {
+			*triggered = true;
+		} else {
+			memmove(dst, src, len + 1);
+			dst += len + 1;
+		}
+
+		src += len + 1;
+	}
+
+	if (!*triggered)
+		goto out;
+
+	memset(dst, 0, end - dst);
+	calculated_crc = crc32(0, data, XG2010G_UENV_DATA_SIZE);
+	memcpy(block, &calculated_crc, sizeof(calculated_crc));
+
+	ret = xg2010g_uenv_write_block(mtd, block);
+	if (ret)
+		goto out;
+
+	retlen = 0;
+	ret = mtd_read(mtd, 0, XG2010G_UENV_SIZE, &retlen, verify);
+	if ((ret && ret != -EUCLEAN) || retlen != XG2010G_UENV_SIZE) {
+		if (!ret)
+			ret = -EIO;
+		goto out;
+	}
+	ret = 0;
+	if (memcmp(verify, block, XG2010G_UENV_SIZE))
+		ret = -EIO;
+
+out:
+	if (ret)
+		*triggered = false;
+	free(block);
+	free(verify);
+	put_mtd_device(mtd);
+
+	return ret;
 }
 
 static int xg2010g_dsd_get_var(const char *buf, size_t len, const char *key,
@@ -238,8 +380,7 @@ static int xg2010g_get_dsd_ethaddrs(u8 *lan_mac, u8 *wan_mac)
 	if (!buf)
 		return -ENOMEM;
 
-	ret = xg2010g_read_vendor_data(XG2010G_DSD_OFFSET, XG2010G_DSD_ENV_SIZE,
-				       buf);
+	ret = xg2010g_read_dsd_data(0, XG2010G_DSD_ENV_SIZE, buf);
 	if (ret)
 		goto out;
 
@@ -393,7 +534,7 @@ const char *xg2010g_detect_ubi_part(void)
 		return xg2010g_active_ubi_layout->part;
 
 	/*
-	 * XG2010G uses a single UBI layout on partition "ubi"; there are
+	 * The vendor kernel exposes the persistent partition as "system"; there are
 	 * no legacy 1.5/1.0 views to probe.
 	 */
 	xg2010g_ubi_layout_probed = true;
@@ -623,33 +764,37 @@ int board_late_init(void)
 {
 	char boot_ubi[64];
 	const char *ubi_part;
-	const char *recovery_trigger;
 	ulong recovery_addr;
+	bool uenv_triggered = false;
 
 	printf("XG2010G release %s - %s\n",
 	       XG2010G_RELEASE_VERSION, XG2010G_RELEASE_CREDIT);
 
-	xg2010g_sync_runtime_ethaddrs();
+	/* Read only the chainloader-private mtd1/uenv flag; never save mtd0 env. */
+	if (xg2010g_is_compatible()) {
+		int trigger_ret = xg2010g_uenv_consume_recovery_trigger(&uenv_triggered);
+		if (trigger_ret && trigger_ret != -ENODEV && trigger_ret != -EBADMSG)
+			printf("XG2010G: uenv trigger read failed: %d\n", trigger_ret);
+	}
+
+	/* Avoid pre-network NAND reads; use the environment MACs for recovery. */
 	ubi_part = xg2010g_detect_ubi_part();
 	snprintf(boot_ubi, sizeof(boot_ubi),
 		 "ubi part %s && run boot_production", ubi_part);
 	env_set("boot_ubi", boot_ubi);
-	if (xg2010g_ubi_layout_available)
-		xg2010g_sync_factory_part(ubi_part);
-
-	recovery_trigger = env_get("recovery_trigger");
-	if (recovery_trigger && recovery_trigger[0]) {
-		/*
-		 * One-shot software recovery trigger, set by the LuCI
-		 * recovery app.  Clear and persist the flag before starting
-		 * the web recovery server so a power-cycle or a recovery
-		 * flash returns the device to normal booting.
-		 */
-		printf("Recovery trigger detected, starting web recovery...\n");
-		env_set("recovery_trigger", NULL);
-		if (env_save())
-			printf("Warning: failed to save environment, recovery "
-			       "will be re-entered on the next boot\n");
+	/*
+	 * Do not touch raw NAND/UBI from board_late_init.  On this board the
+	 * first-stage loader may leave SNFI/DMA active; large early reads can
+	 * overwrite relocated U-Boot text before eth_initialize().  Factory
+	 * synchronisation is deferred to the normal production path.
+	 */
+	/* Only the chainloader-private flag may select HTTP recovery. */
+	if (uenv_triggered) {
+		printf("Factory uenv recovery trigger consumed, starting web recovery...\n");
+	} else if (env_get("recovery_trigger") &&
+	    !strcmp(env_get("recovery_trigger"), "1")) {
+		/* The persistent clear is performed by the MTD environment backend. */
+		env_set("recovery_trigger", "0");
 	} else if (!xg2010g_recovery_button_pressed()) {
 		return 0;
 	} else {

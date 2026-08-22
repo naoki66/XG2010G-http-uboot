@@ -1703,8 +1703,8 @@ int ofnode_read_resource(ofnode node, uint index, struct resource *res)
 		if (ret < 0)
 			return -EINVAL;
 		memset(res, '\0', sizeof(*res));
-		res->start = fres.start;
-		res->end = fres.end;
+		WRITE_ONCE(res->start, fres.start);
+		WRITE_ONCE(res->end, fres.end);
 
 		return 0;
 	}

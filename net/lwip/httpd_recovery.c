@@ -62,7 +62,7 @@ const char *an7581_release_credit(void);
  * Avoid hard-coding a RAM address which may overlap U-Boot/lwIP memory.
  */
 /* Default maximum upload size in bytes (override with env 'recovery_max') */
-#define RECOVERY_UPLOAD_MAX    (32 * 1024 * 1024UL)
+#define RECOVERY_UPLOAD_MAX    (64 * 1024 * 1024UL)
 #define RECOVERY_MIN_FIRMWARE_SIZE (1 * 1024 * 1024UL)
 #define RECOVERY_MAX_UBOOT_SIZE    (1 * 1024 * 1024UL)
 
@@ -75,7 +75,7 @@ const char *an7581_release_credit(void);
 #define RECOVERY_DHCP_BROADCAST_IPADDR   "192.168.255.255"
 #define RECOVERY_DHCP_LEASE_SECS         86400U
 #define RECOVERY_DHCP_MAX_MSG_LEN        1500
-#define RECOVERY_LED_PORTS     2
+#define RECOVERY_LED_PORTS     1
 #define RECOVERY_LED_POLL_MS   100
 #define RECOVERY_LED_PHY_POLL_MS 500
 #define RECOVERY_LED_MDIO_BACKOFF_MS 5000
@@ -119,7 +119,6 @@ const char *an7581_release_credit(void);
 #define RECOVERY_GPIO_LAN1_LED1_MODE_MASK BIT(6)
 #define RECOVERY_GPIO43_FLASH_MODE_CFG BIT(23)
 #define RECOVERY_GPIO44_FLASH_MODE_CFG BIT(24)
-#define RECOVERY_UBOOTENV_SIZE (1 * 1024 * 1024UL)
 #define RECOVERY_FACTORY_SIZE  (1 * 1024 * 1024UL)
 #define RECOVERY_UBI_WRITE_CHUNK (1024 * 1024U)
 #define RECOVERY_UBOOT_SLOT_FIT_OFFSET 0x2100U
@@ -213,7 +212,7 @@ struct recovery_ubi_layout {
 };
 
 static const struct recovery_ubi_layout recovery_ubi_layouts[] = {
-	{ "2.0", "ubi" },
+	{ "2.0", "system" },
 	{ "1.5", "ubi1.5" },
 	{ "1.0", "ubi1.0" },
 };
@@ -280,9 +279,10 @@ struct recovery_dhcp_server {
 	ip4_addr_t dns;
 };
 
-static const int recovery_led_phy_addrs[RECOVERY_LED_PORTS] = { 9, 10 };
-static u8 recovery_green_led_gpios[RECOVERY_LED_PORTS] = { 43, 44 };
-static u8 recovery_yellow_led_gpios[RECOVERY_LED_PORTS] = { 33, 34 };
+/* XG2010G LAN4 is the sole switch-facing recovery LED pair (PHY12). */
+static const int recovery_led_phy_addrs[RECOVERY_LED_PORTS] = { 12 };
+static u8 recovery_green_led_gpios[RECOVERY_LED_PORTS] = { 46 };
+static u8 recovery_yellow_led_gpios[RECOVERY_LED_PORTS] = { 42 };
 static bool recovery_led_gpios_loaded;
 
 /*
@@ -2060,9 +2060,6 @@ static bool recovery_preserve_ubi_volume(const char *name)
 	if (!name || !*name)
 		return true;
 
-	if (!strcmp(name, "ubootenv") || !strcmp(name, "ubootenv2"))
-		return true;
-
 	if (of_machine_is_compatible("econet,xg2010g") ||
 	    of_machine_is_compatible("econet,xg2010g-ubi") ||
 	    of_machine_is_compatible("gemtek,xg2010g") ||
@@ -2308,18 +2305,6 @@ static int recovery_ensure_preserved_ubi_volumes(struct recovery_target *target)
 
 	if (recovery_select_ubi(target->ubi_part))
 		return -ENODEV;
-
-	ret = recovery_ensure_ubi_volume_named("ubootenv",
-					       RECOVERY_UBOOTENV_SIZE,
-					       UBI_DYNAMIC_VOLUME);
-	if (ret)
-		return ret;
-
-	ret = recovery_ensure_ubi_volume_named("ubootenv2",
-					       RECOVERY_UBOOTENV_SIZE,
-					       UBI_DYNAMIC_VOLUME);
-	if (ret)
-		return ret;
 
 	if (of_machine_is_compatible("econet,xg2010g") ||
 	    of_machine_is_compatible("econet,xg2010g-ubi") ||
