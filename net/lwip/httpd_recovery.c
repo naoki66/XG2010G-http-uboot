@@ -130,6 +130,7 @@ const char *an7581_release_credit(void);
 static u8 *recv_base;
 static u32 recv_off;
 static u32 recv_total;
+static ulong upload_start_ms;
 static int post_ok;
 static int flash_request;
 static bool reboot_post_pending;
@@ -2885,6 +2886,7 @@ err_t httpd_post_begin(void *connection, const char *uri, const char *http_reque
     }
 
     recv_total = content_len;
+    upload_start_ms = get_timer(0);
 
     /*
      * Pick a stable upload buffer:
@@ -2972,7 +2974,8 @@ void httpd_post_finished(void *connection, char *response_uri, u16_t response_ur
 		return;
 	}
 
-	printf("httpd: post finished, %u/%u bytes received\n", recv_off, recv_total);
+	printf("httpd: post finished, %u/%u bytes received in %lu ms\n",
+	       recv_off, recv_total, get_timer(upload_start_ms));
 	upload_complete = post_ok && recv_total && (recv_off >= recv_total);
 	if (upload_complete) {
 		strlcpy(response_uri, "/ok", response_uri_len);
@@ -3303,7 +3306,14 @@ int run_http_recovery(void)
 			}
 		}
 		/* net_lwip_rx() already runs sys_check_timeouts(). */
-		airoha_recovery_poll_link(udev);
+		/* PHY/PCS MDIO probing is intentionally skipped while the HTTP POST
+		 * body is arriving. The Ethernet datapath is already primed before
+		 * the server starts; probing every main-loop iteration needlessly
+		 * serializes TCP ACKs behind several Clause-45 transactions and makes
+		 * LAN1/LAN2 uploads appear very slow. Resume probing once reception is
+		 * complete or when the server is idle. */
+		if (!post_ok || recv_off >= recv_total)
+			airoha_recovery_poll_link(udev);
 		net_lwip_rx(udev, netif);
 		if (use_status_leds)
 			recovery_status_led_poll(&status_leds);
