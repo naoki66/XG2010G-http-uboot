@@ -37,8 +37,16 @@ fi
 
 mkdir -p "$OUTPUT_DIR"
 
-OUTPUT_FIT="$OUTPUT_DIR/$BOARD-chainloader.itb"
-OUTPUT_SLOT="$OUTPUT_DIR/$BOARD-chainloader-slot.bin"
+# Keep all artifacts in one stable directory while making each build easy to
+# identify.  XG2010G_BUILD_STAMP can be supplied by CI for reproducibility.
+BUILD_STAMP="${XG2010G_BUILD_STAMP:-$(date +%Y%m%d-%H%M%S)}"
+COMMIT_ID="${XG2010G_COMMIT_ID:-$(git -C "$UBOOT_DIR" rev-parse --short=12 HEAD 2>/dev/null || echo unknown)}"
+OUTPUT_PREFIX="$BOARD-chainloader-${BUILD_STAMP}-g${COMMIT_ID}"
+OUTPUT_FIT="$OUTPUT_DIR/${OUTPUT_PREFIX}.itb"
+OUTPUT_SLOT="$OUTPUT_DIR/${OUTPUT_PREFIX}-slot.bin"
+OUTPUT_PAYLOAD="$OUTPUT_DIR/${BOARD}-u-boot-${BUILD_STAMP}-g${COMMIT_ID}.bin"
+LATEST_FIT="$OUTPUT_DIR/$BOARD-chainloader.itb"
+LATEST_SLOT="$OUTPUT_DIR/$BOARD-chainloader-slot.bin"
 MAX_SLOT_SIZE=$((0x100000))
 
 TMPDIR=$(mktemp -d)
@@ -63,6 +71,12 @@ cp "$PREFIX_SHIM" "$OUTPUT_SLOT"
 dd if=/dev/zero bs=1 count=$((0x2100 - prefix_size)) >> "$OUTPUT_SLOT" 2>/dev/null
 cat "$OUTPUT_FIT" >> "$OUTPUT_SLOT"
 
+# Stable aliases are retained for existing tooling; the timestamped files
+# above are the canonical artifacts to archive or flash.
+cp "$PAYLOAD" "$OUTPUT_PAYLOAD"
+cp "$OUTPUT_FIT" "$LATEST_FIT"
+cp "$OUTPUT_SLOT" "$LATEST_SLOT"
+
 slot_size=$(wc -c < "$OUTPUT_SLOT")
 if [ "$slot_size" -ge "$MAX_SLOT_SIZE" ]; then
   echo "Error: chainloader slot is not smaller than 1 MiB: $slot_size bytes" >&2
@@ -72,6 +86,8 @@ echo ""
 echo "Done!"
 echo "  FIT:  $OUTPUT_FIT ($(wc -c < "$OUTPUT_FIT") bytes)"
 echo "  Slot: $OUTPUT_SLOT ($slot_size bytes; maximum $((MAX_SLOT_SIZE - 1)) bytes)"
+echo "  U-Boot payload: $OUTPUT_PAYLOAD ($(wc -c < "$OUTPUT_PAYLOAD") bytes)"
+echo "  Latest aliases: $LATEST_FIT, $LATEST_SLOT"
 echo ""
 echo "Magic check:"
 echo "  Offset 0x0000: $(dd if="$OUTPUT_SLOT" bs=1 count=4 2>/dev/null | od -A n -t x1 | tr -d ' \n')"

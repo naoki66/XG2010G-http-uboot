@@ -10,6 +10,20 @@ of this repository.
 
 ## Development
 
+### Local build artifacts
+
+Chainloader builds always use the fixed `out/` directory. Canonical files carry
+the local timestamp and Git revision, for example:
+
+```text
+out/xg2010g-u-boot-YYYYMMDD-HHMMSS-g<commit>.bin
+out/xg2010g-chainloader-YYYYMMDD-HHMMSS-g<commit>.itb
+out/xg2010g-chainloader-YYYYMMDD-HHMMSS-g<commit>-slot.bin
+```
+
+The stable aliases `out/xg2010g-chainloader.itb` and
+`out/xg2010g-chainloader-slot.bin` are retained for existing scripts.
+
 Use the repository's normal U-Boot build flow. The CI workflow can be started
 manually from GitHub Actions and publishes SHA-256 checksums for its artifacts.
 
