@@ -23,5 +23,5 @@ static int do_http_recovery(struct cmd_tbl *cmdtp, int flag, int argc,
 U_BOOT_CMD(
 	http_recovery, 1, 0, do_http_recovery,
 	"start the lwIP HTTP recovery server",
-	""
+	"Serve http://192.168.255.1/; connect a PC at 192.168.255.2/24"
 );
