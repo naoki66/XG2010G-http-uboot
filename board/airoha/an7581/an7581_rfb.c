@@ -48,6 +48,7 @@ DECLARE_GLOBAL_DATA_PTR;
 #define XG2010G_FACTORY_WAN_MAC_OFFSET	0x5000
 #define XG2010G_FACTORY_LAN_MAC_OFFSET	0x6000
 #define XG2010G_FACTORY_SIZE		(XG2010G_FACTORY_LAN_MAC_OFFSET + ARP_HLEN)
+#define XG2010G_ENV_VERSION		"2"
 
 struct xg2010g_ubi_layout {
 	const char *version;
@@ -675,7 +676,7 @@ static void xg2010g_sync_runtime_ethaddrs(void)
 {
 	u8 lan_mac[ARP_HLEN], wan_mac[ARP_HLEN];
 
-	if (!xg2010g_is_compatible() && !xg2010g_is_compatible())
+	if (!xg2010g_is_compatible())
 		return;
 
 	if (xg2010g_get_dsd_ethaddrs(lan_mac, wan_mac))
@@ -705,7 +706,7 @@ static void xg2010g_fixup_fdt_macs(void *blob)
 	u8 lan_mac[ARP_HLEN], wan_mac[ARP_HLEN];
 	int i, ret;
 
-	if (!xg2010g_is_compatible() && !xg2010g_is_compatible())
+	if (!xg2010g_is_compatible())
 		return;
 
 	if (xg2010g_get_runtime_ethaddrs(lan_mac, wan_mac))
@@ -738,13 +739,87 @@ int board_init(void)
 
 int run_http_recovery(void);
 
+static void xg2010g_prepare_environment(void)
+{
+	const char *version;
+
+	if (!xg2010g_is_compatible())
+		return;
+
+	version = env_get("xg2010g_env_version");
+	if (version && !strcmp(version, XG2010G_ENV_VERSION))
+		return;
+
+	/*
+	 * The uenv partition was previously owned by the vendor loader.
+	 * Do not import its flash-read bootcmd into this U-Boot: restore the
+	 * repaired xg2010g.env defaults and let the user persist them with
+	 * saveenv once.
+	 */
+	printf("XG2010G: replacing legacy uenv with U-Boot defaults\n");
+	env_set_default("legacy XG2010G uenv", 0);
+}
+
+static void xg2010g_strip_legacy_bootargs(void)
+{
+	const char *args = env_get("bootargs");
+	char *input, *output, *src, *dst;
+	size_t len;
+
+	if (!args || !*args)
+		return;
+
+	len = strlen(args);
+	input = malloc(len + 1);
+	output = malloc(len + 1);
+	if (!input || !output) {
+		free(input);
+		free(output);
+		return;
+	}
+
+	memcpy(input, args, len + 1);
+	src = input;
+	dst = output;
+	while (*src) {
+		char *token = src;
+		bool keep;
+
+		while (*token == ' ')
+			token++;
+		src = token;
+		while (*src && *src != ' ')
+			src++;
+		if (*src)
+			*src++ = '\0';
+
+		keep = strncmp(token, "tclinux_info=",
+			       sizeof("tclinux_info=") - 1) != 0 &&
+		       strncmp(token, "mtdparts=",
+			       sizeof("mtdparts=") - 1) != 0;
+		if (!keep)
+			continue;
+
+		if (dst != output)
+			*dst++ = ' ';
+		len = strlen(token);
+		memcpy(dst, token, len);
+		dst += len;
+	}
+
+	*dst = '\0';
+	env_set("bootargs", output);
+	free(input);
+	free(output);
+}
+
 static int xg2010g_recovery_button_pressed(void)
 {
 	struct gpio_desc rec_gpio;
 	ofnode root;
 	int ret;
 
-	if (!xg2010g_is_compatible() && !xg2010g_is_compatible())
+	if (!xg2010g_is_compatible())
 		return 0;
 
 	memset(&rec_gpio, 0, sizeof(rec_gpio));
@@ -770,7 +845,19 @@ int board_late_init(void)
 	printf("XG2010G release %s - %s\n",
 	       XG2010G_RELEASE_VERSION, XG2010G_RELEASE_CREDIT);
 
-	/* Read only the chainloader-private mtd1/uenv flag; never save mtd0 env. */
+	xg2010g_prepare_environment();
+	xg2010g_strip_legacy_bootargs();
+
+	/*
+	 * The Ethernet driver is initialized immediately after board_late_init().
+	 * Populate ethaddr/eth1addr from the board's DSD partition first so the
+	 * recovery server and the normal network stack never fall back to a
+	 * random locally-administered address.  This is a small 4 KiB read and is
+	 * independent of the large chainloader read performed by the vendor U-Boot.
+	 */
+	xg2010g_sync_runtime_ethaddrs();
+
+	/* Consume the chainloader-private one-shot flag from the uenv partition. */
 	if (xg2010g_is_compatible()) {
 		int trigger_ret = xg2010g_uenv_consume_recovery_trigger(&uenv_triggered);
 		if (trigger_ret && trigger_ret != -ENODEV && trigger_ret != -EBADMSG)

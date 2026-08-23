@@ -72,6 +72,15 @@ echo ""
 echo "Done!"
 echo "  FIT:  $OUTPUT_FIT ($(wc -c < "$OUTPUT_FIT") bytes)"
 echo "  Slot: $OUTPUT_SLOT ($slot_size bytes; maximum $((MAX_SLOT_SIZE - 1)) bytes)"
+
+# The FIT starts at 0x2100 inside the 1 MiB chainloader partition.  Read to
+# the partition end rather than using the current FIT length, so a future
+# larger U-Boot still boots as long as the slot remains below 1 MiB.
+fit_size=$(wc -c < "$OUTPUT_FIT")
+fit_read_size=$(( (fit_size + 3) & ~3 ))
+partition_fit_read_size=$(( MAX_SLOT_SIZE - 0x2100 ))
+printf '  Current FIT read:      flash read 0x602100 0x%x 0x81800000\n' "$fit_read_size"
+printf '  Robust slot-capacity read: flash read 0x602100 0x%x 0x81800000\n' "$partition_fit_read_size"
 echo ""
 echo "Magic check:"
 echo "  Offset 0x0000: $(dd if="$OUTPUT_SLOT" bs=1 count=4 2>/dev/null | od -A n -t x1 | tr -d ' \n')"

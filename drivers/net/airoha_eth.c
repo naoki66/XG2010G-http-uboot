@@ -5586,18 +5586,26 @@ static int airoha_gdm4_phy_link_up(struct airoha_eth *eth)
 
 static int airoha_gdm4_usb_phy_link_up(struct airoha_eth *eth)
 {
-	int ret;
+	int bmsr;
 
 	if (!eth->gdm4_dual_hsgmii || !eth->gdm4_usb_phy)
 		return 0;
 
 	if (!eth->gdm4_usb_phy_started) {
-		ret = phy_startup(eth->gdm4_usb_phy);
-		/* EN8811H startup can block for several seconds on no-link. */
+		/*
+		 * The secondary USB HSGMII peer is optional during recovery.
+		 * Do not call phy_startup() here: it waits for autonegotiation and
+		 * turns an unplugged peer into a several-second recovery delay.
+		 */
 		eth->gdm4_usb_phy_started = true;
-		if (ret)
-			return 0;
 	}
+
+	/* Read the latched/current C22 link state without waiting for AN. */
+	bmsr = phy_read(eth->gdm4_usb_phy, MDIO_DEVAD_NONE, MII_BMSR);
+	if (bmsr < 0)
+		return 0;
+	bmsr = phy_read(eth->gdm4_usb_phy, MDIO_DEVAD_NONE, MII_BMSR);
+	eth->gdm4_usb_phy->link = !!(bmsr >= 0 && (bmsr & BMSR_LSTATUS));
 
 	return eth->gdm4_usb_phy->link;
 }
@@ -6996,13 +7004,13 @@ static int airoha_switch_init(struct udevice *dev, struct airoha_eth *eth)
 			} else {
 				eth->gdm4_usb_phy->node = eth->gdm4_usb_phy_node;
 				ret = phy_config(eth->gdm4_usb_phy);
-				if (!ret)
-					ret = phy_startup(eth->gdm4_usb_phy);
-				eth->gdm4_usb_phy_started = true;
 				if (ret) {
 					printf("gdm4-usb: PHY%d initialization failed: %d; keeping switch LAN enabled\n",
 					       eth->gdm4_usb_phy_addr, ret);
 					eth->gdm4_usb_phy = NULL;
+				} else {
+					/* Link polling below is deliberately non-blocking. */
+					eth->gdm4_usb_phy_started = true;
 				}
 			}
 		}

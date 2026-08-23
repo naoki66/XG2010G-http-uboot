@@ -46,7 +46,7 @@
 
 	chosen {
 		rootdisk = <&ubi_rootfs>;
-		bootargs = "console=ttyS0,115200 earlycon ubi.block=0,fit root=/dev/fit0 rootwait";
+		bootargs = "console=ttyS0,115200 earlycon root=/dev/ram0 rootfstype=squashfs ro rootwait ramdisk_size=65536 rdinit=/sbin/init";
 		stdout-path = "serial0:115200n8";
 		/* 1 GiB DDR minus 2 MiB ATF reserve at 0x80000000 */
 		linux,usable-memory-range = <0x0 0x80200000 0x0 0x3fe00000>;
