@@ -133,9 +133,11 @@
 	pinctrl-0 = <&mdio_pins>;
 	airoha,phy-poll-start = <5>;
 	airoha,phy-poll-end = <15>;
-	/* LAN4 is switch port 4 / internal ePHY12 on XG2010G. */
+	/* LAN4 is switch port 4 / internal ePHY12. Include the external
+	 * RTL8261 PHY5/PHY8 in the recovery power-cycle mask too; otherwise
+	 * LAN1/LAN2 can remain in BMCR power-down after eth re-entry. */
 	airoha,recovery-switch-port-mask = <0x10>;
-	airoha,recovery-phy-mask = <0x1000>;
+	airoha,recovery-phy-mask = <0x1120>;
 };
 
 &gdm4 {

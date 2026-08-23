@@ -5746,6 +5746,12 @@ static bool airoha_recovery_lan_up(struct airoha_eth *eth)
 	int phy;
 
 	for (phy = 0; phy < 32; phy++) {
+		/* PHY5/PHY8 are the external 10G endpoints (LAN1/LAN2), not
+		 * switch-facing recovery ports. They may be included in the PHY
+		 * power-cycle mask, but must not make the 1G switch fport win the
+		 * automatic egress selection. */
+		if (airoha_rtl8261_is_phy_addr(phy))
+			continue;
 		if ((eth->recovery_phy_mask & BIT(phy)) &&
 		    airoha_mdio_link_up(eth, phy))
 			return true;

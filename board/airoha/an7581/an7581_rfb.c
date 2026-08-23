@@ -831,9 +831,13 @@ int board_late_init(void)
 		recovery_addr = CONFIG_SYS_LOAD_ADDR;
 	env_set_hex("recovery_addr", recovery_addr);
 
-	if (IS_ENABLED(CONFIG_HTTPD_RECOVERY))
+	if (IS_ENABLED(CONFIG_HTTPD_RECOVERY)) {
+		/* Do not fall through into autoboot after Ctrl-C. Re-entering the
+		 * chainloader FIT while Ethernet/QDMA is being torn down can abort. */
 		run_http_recovery();
-	else
+		env_set("bootdelay", "-1");
+		printf("Recovery stopped; autoboot disabled (reset to resume normal boot)\n");
+	} else
 		printf("HTTP recovery is not enabled.\n");
 
 	return 0;
