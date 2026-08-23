@@ -40,7 +40,14 @@ mkdir -p "$OUTPUT_DIR"
 # Keep all artifacts in one stable directory while making each build easy to
 # identify.  XG2010G_BUILD_STAMP can be supplied by CI for reproducibility.
 BUILD_STAMP="${XG2010G_BUILD_STAMP:-$(date +%Y%m%d-%H%M%S)}"
-COMMIT_ID="${XG2010G_COMMIT_ID:-$(git -C "$UBOOT_DIR" rev-parse --short=12 HEAD 2>/dev/null || echo unknown)}"
+EXPECTED_COMMIT="$(git -C "$UBOOT_DIR" rev-parse --short=12 HEAD 2>/dev/null || echo unknown)"
+PAYLOAD_VERSION="$(strings "$PAYLOAD" 2>/dev/null | sed -n 's/.*U-Boot \(XG2010G-recovery-[^ ]*\).*/\1/p' | head -1 || true)"
+if [ -n "$PAYLOAD_VERSION" ] && [ "$EXPECTED_COMMIT" != "unknown" ] &&
+   [[ "$PAYLOAD_VERSION" != *"-g${EXPECTED_COMMIT}"* ]]; then
+  echo "Error: payload version '$PAYLOAD_VERSION' does not match HEAD '$EXPECTED_COMMIT'. Rebuild U-Boot before packaging." >&2
+  exit 1
+fi
+COMMIT_ID="${XG2010G_COMMIT_ID:-$EXPECTED_COMMIT}"
 OUTPUT_PREFIX="$BOARD-chainloader-${BUILD_STAMP}-g${COMMIT_ID}"
 OUTPUT_FIT="$OUTPUT_DIR/${OUTPUT_PREFIX}.itb"
 OUTPUT_SLOT="$OUTPUT_DIR/${OUTPUT_PREFIX}-slot.bin"
