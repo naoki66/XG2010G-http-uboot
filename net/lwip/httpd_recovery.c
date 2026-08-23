@@ -2834,14 +2834,12 @@ err_t httpd_post_begin(void *connection, const char *uri, const char *http_reque
         }
     } else if (!strncmp(uri, "/upload/uboot", 13) &&
                (uri[13] == '\0' || uri[13] == '?')) {
-        /* XG2010G production flashing is restricted to mtd4/system.
-         * The chainloader slot (mtd3) is factory-managed and must never be
-         * overwritten by the HTTP uploader.
+        /* Chainloader maintenance is the only raw-MTD exception.
+         * recovery_resolve_target() pins this target to mtd3 at 0x600000
+         * and recovery_validate_uboot_slot_image() validates the slot before
+         * any erase occurs. Firmware uploads continue to target mtd4/system.
          */
-        printf("httpd: rejecting chainloader upload; flash mtd4/system only\n");
-        prog_phase = -1;
-        strlcpy(response_uri, "/400.html", response_uri_len);
-        return ERR_ARG;
+        current_target = TARGET_UBOOT;
     } else if (!strncmp(uri, "/upload", 7) &&
                (uri[7] == '\0' || uri[7] == '?')) {
         current_target = TARGET_FIRMWARE;

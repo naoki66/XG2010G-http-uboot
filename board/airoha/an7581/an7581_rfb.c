@@ -786,11 +786,11 @@ int board_late_init(void)
 
 	/* Populate the Ethernet addresses before the network stack is initialized. */
 	/*
-	 * The normal U-Boot environment is intentionally disabled on XG2010G;
-	 * ethaddr therefore cannot be populated from env defaults.  Read the
-	 * factory MACs from the dsd MTD partition before eth_initialize() runs,
-	 * otherwise the Ethernet uclass generates a random locally-administered
-	 * address.  This is a small 4 KiB read and is safe after initr_nand.
+	 * The persistent environment is in mtd1/uenv, but factory MACs are not
+	 * guaranteed to be present there. Read them from dsd before
+	 * eth_initialize() runs, otherwise the Ethernet uclass generates a random
+	 * locally-administered address. This is a small 4 KiB read and is safe
+	 * after initr_nand.
 	 */
 	xg2010g_sync_runtime_ethaddrs();
 	ubi_part = xg2010g_detect_ubi_part();
