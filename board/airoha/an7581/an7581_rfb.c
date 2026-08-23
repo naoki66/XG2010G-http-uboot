@@ -819,6 +819,10 @@ int board_late_init(void)
 	env_set("ipaddr", "192.168.255.1");
 	env_set("netmask", "255.255.255.0");
 	env_set("gatewayip", "0.0.0.0");
+	printf("XG2010G recovery network: port=%s rtl8261_patch_autoload=%s\n",
+	       env_get("recovery_port") ? env_get("recovery_port") : "auto",
+	       env_get("rtl8261_patch_autoload") ?
+	       env_get("rtl8261_patch_autoload") : "board-default-on");
 
 	/*
 	 * Keep the recovery upload buffer well away from the low-memory

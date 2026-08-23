@@ -2878,8 +2878,14 @@ static bool airoha_rtl8261_patch_autoload_enabled(void)
 {
 	const char *autoload = env_get("rtl8261_patch_autoload");
 
+	/* A persisted mtd1/uenv environment replaces, rather than merges with,
+	 * the compiled defaults. Older XG2010G uenv images therefore commonly
+	 * lack rtl8261_patch_autoload even though the board requires the PHY
+	 * patch before either 10G SerDes path can pass traffic. Keep autoload on
+	 * for this board unless it is explicitly disabled. */
 	if (!autoload)
-		return false;
+		return of_machine_is_compatible("econet,xg2010g") ||
+		       of_machine_is_compatible("econet,xg2010g-ubi");
 
 	return !strcmp(autoload, "1") || !strcmp(autoload, "on") ||
 	       !strcmp(autoload, "enable") || !strcmp(autoload, "true");
@@ -6982,10 +6988,10 @@ static int airoha_switch_init(struct udevice *dev, struct airoha_eth *eth)
 		}
 	} else {
 		if (airoha_rtl8261_patch_autoload_enabled()) {
-			debug("rtl8261: automatic PHY patch enabled\n");
+			printf("rtl8261: automatic PHY patch enabled (PHY5/PHY8)\n");
 			airoha_rtl8261_minimal_init(eth);
 		} else {
-			debug("rtl8261: PHY patch deferred (use rtl8261_patch)\n");
+			printf("rtl8261: PHY patch deferred (use rtl8261_patch)\n");
 		}
 	}
 
@@ -7013,6 +7019,13 @@ static int airoha_switch_init(struct udevice *dev, struct airoha_eth *eth)
 			}
 		}
 	}
+
+	printf("airoha: 10G config LAN1 PHY%d src=0x%02x txch=%u PCS=%s; "
+	       "LAN2 PHY%d src=0x%02x txch=%u PCS=%s; rtl8261_init=%d\n",
+	       eth->gdm4_phy_addr, eth->gdm4_src_port, eth->gdm4_tx_channel,
+	       eth->gdm4_pcs_ready ? "ready" : "pending", eth->gdm3_phy_addr,
+	       eth->gdm3_src_port, eth->gdm3_tx_channel,
+	       eth->gdm3_pcs_ready ? "ready" : "pending", eth->rtl8261_init_done);
 
 	return 0;
 }
