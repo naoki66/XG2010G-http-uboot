@@ -39,6 +39,7 @@ mkdir -p "$OUTPUT_DIR"
 
 OUTPUT_FIT="$OUTPUT_DIR/$BOARD-chainloader.itb"
 OUTPUT_SLOT="$OUTPUT_DIR/$BOARD-chainloader-slot.bin"
+MAX_SLOT_SIZE=$((0x100000))
 
 TMPDIR=$(mktemp -d)
 trap 'rm -rf "$TMPDIR"' EXIT
@@ -63,10 +64,14 @@ dd if=/dev/zero bs=1 count=$((0x2100 - prefix_size)) >> "$OUTPUT_SLOT" 2>/dev/nu
 cat "$OUTPUT_FIT" >> "$OUTPUT_SLOT"
 
 slot_size=$(wc -c < "$OUTPUT_SLOT")
+if [ "$slot_size" -ge "$MAX_SLOT_SIZE" ]; then
+  echo "Error: chainloader slot is not smaller than 1 MiB: $slot_size bytes" >&2
+  exit 1
+fi
 echo ""
 echo "Done!"
 echo "  FIT:  $OUTPUT_FIT ($(wc -c < "$OUTPUT_FIT") bytes)"
-echo "  Slot: $OUTPUT_SLOT ($slot_size bytes)"
+echo "  Slot: $OUTPUT_SLOT ($slot_size bytes; maximum $((MAX_SLOT_SIZE - 1)) bytes)"
 echo ""
 echo "Magic check:"
 echo "  Offset 0x0000: $(dd if="$OUTPUT_SLOT" bs=1 count=4 2>/dev/null | od -A n -t x1 | tr -d ' \n')"

@@ -166,9 +166,19 @@
 		#size-cells = <1>;
 
 		partition@0 {
-			label = "vendor";
-			reg = <0x00000000 0x00600000>;
+			label = "bootloader";
+			reg = <0x00000000 0x00200000>;
 			read-only;
+		};
+
+		partition@200000 {
+			label = "uenv";
+			reg = <0x00200000 0x00200000>;
+		};
+
+		partition@400000 {
+			label = "dsd";
+			reg = <0x00400000 0x00200000>;
 		};
 
 		partition@600000 {
@@ -178,51 +188,42 @@
 		};
 
 		partition@700000 {
-			label = "ubi";
-			reg = <0x00700000 0x1b600000>;
+			label = "system";
+			reg = <0x00700000 0x1b700000>;
 			compatible = "linux,ubi";
 
 			volumes {
-				ubi-volume-ubootenv {
-					volname = "ubootenv";
-
-					nvmem-layout {
-						compatible = "u-boot,env-redundant-bool";
-					};
-				};
-
-				ubi-volume-ubootenv2 {
-					volname = "ubootenv2";
-
-					nvmem-layout {
-						compatible = "u-boot,env-redundant-bool";
-					};
-				};
-
 				ubi_rootfs: ubi-volume-fit {
 					volname = "fit";
+				};
+
+				ubi_factory: ubi-volume-factory {
+					volname = "factory";
 				};
 			};
 		};
 
 		/*
-		 * Original XG2010G ART partition (BOSA calibration at 0x5000).
-		 * Kept read-only; the vendor bootloader expects it at this offset.
-		 */
-		partition@1bd00000 {
-			label = "art";
-			reg = <0x1bd00000 0x00300000>;
-			read-only;
-		};
-
-		/*
-		 * Reserve the final 512 128 KiB eraseblocks (64 MiB) for
+		 * Reserve the final 528 128 KiB eraseblocks (66 MiB) for
 		 * the vendor bootloader's BMT/BBT handling on SPI-NAND.
 		 */
-		reserved_bmt@1c000000 {
+		reserved_bmt@1be00000 {
 			label = "reserved_bmt";
-			reg = <0x1c000000 0x04000000>;
+			reg = <0x1be00000 0x04200000>;
 			read-only;
+		};
+	};
+};
+
+&ubi_factory {
+	nvmem-layout {
+		compatible = "fixed-layout";
+		#address-cells = <1>;
+		#size-cells = <1>;
+
+		/* BOSA calibration / factory data is stored inside UBI factory. */
+		bosa-calibration@5000 {
+			reg = <0x5000 0x1000>;
 		};
 	};
 };

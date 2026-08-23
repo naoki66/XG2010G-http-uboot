@@ -388,13 +388,13 @@ button,input,select{font:inherit;letter-spacing:0}
           <div class='target-info'>
             <span class='target-label'>Target</span><span class='target-value' id='target-value'>ubi:fit</span>
             <span class='target-label'>Operation</span><span class='target-value' id='scope-value'>Erase and recreate the complete selected UBI partition</span>
-            <span class='target-label'>Recovery</span><span class='target-value' id='preserve-value'>Saved U-Boot environment (ubootenv/ubootenv2) is preserved</span>
+            <span class='target-label'>Environment</span><span class='target-value' id='preserve-value'>Built-in defaults; no secondary environment CRC</span>
             <span class='target-label'>Detected</span><span class='target-value' id='detected-layout'>Checking current layout...</span>
           </div>
 
           <div class='layout-block' id='layout-block'>
             <label class='layout-label'>Image UBI layout</label>
-            <p class='layout-help' id='layout-help'>UBI 2.0 - 437.5 MiB (fixed layout, no selection needed)</p>
+            <p class='layout-help' id='layout-help'>UBI 2.0 - 439 MiB system partition (fixed layout, no selection needed)</p>
           </div>
 
           <div class='file-block'>
@@ -464,11 +464,11 @@ var profiles={
 	    title:'Firmware Recovery',
 	    copy:'Upload an OpenWrt FIT image and recreate the UBI 2.0 layout.',
 	    target:'ubi:fit',
-	    scope:'Erase and recreate the complete ubi partition',
-	    preserve:'Saved U-Boot environment (ubootenv/ubootenv2) is preserved',
+		    scope:'Erase and recreate the complete system UBI partition',
+	    preserve:'Built-in defaults; no secondary environment CRC',
 	    help:'Firmware images must be at least 1 MiB',
 	    action:'Upload and Recover',
-	    notices:['Do not power off or reboot the device during recovery!','The ubi partition is fully erased and rebuilt.','The image must match the XG2010G embedded device tree.','The device restarts automatically when recovery completes.']
+		    notices:['Do not power off or reboot the device during recovery!','The system UBI partition is fully erased and rebuilt.','The image must match the XG2010G embedded device tree.','The device restarts automatically when recovery completes.']
   },
   uboot:{
 	    title:'Update U-Boot',
@@ -483,7 +483,7 @@ var profiles={
 };
 
 var layouts={
-  '2.0':{part:'ubi',size:'437.5 MiB',end:'0x1bd00000',help:'Single UBI 2.0 layout with 64 MiB reserved for vendor BMT/BBT.'}
+  '2.0':{part:'system',size:'439 MiB',end:'0x1be00000',help:'XG2010G UBI 2.0 layout: system @ 0x00700000 size 0x1b700000, with 66 MiB reserved for vendor BMT/BBT.'}
 };
 
 var fileInput=document.getElementById('file-input');
