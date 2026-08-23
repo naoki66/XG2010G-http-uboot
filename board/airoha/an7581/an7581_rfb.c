@@ -674,15 +674,22 @@ static int xg2010g_get_runtime_ethaddrs(u8 *lan_mac, u8 *wan_mac)
 static void xg2010g_sync_runtime_ethaddrs(void)
 {
 	u8 lan_mac[ARP_HLEN], wan_mac[ARP_HLEN];
+	int ret;
 
-	if (!xg2010g_is_compatible() && !xg2010g_is_compatible())
+	if (!xg2010g_is_compatible())
 		return;
 
-	if (xg2010g_get_dsd_ethaddrs(lan_mac, wan_mac))
+	ret = xg2010g_get_dsd_ethaddrs(lan_mac, wan_mac);
+	if (ret) {
+		printf("XG2010G: failed to read runtime MACs from DSD: %d\n",
+		       ret);
 		return;
+	}
 
 	eth_env_set_enetaddr("ethaddr", lan_mac);
 	eth_env_set_enetaddr("eth1addr", wan_mac);
+	printf("XG2010G: MACs from DSD LAN=%pM WAN=%pM\n",
+	       lan_mac, wan_mac);
 }
 
 static int xg2010g_fdt_set_mac(void *blob, const char *path, const u8 *mac)
@@ -777,16 +784,24 @@ int board_late_init(void)
 			printf("XG2010G: uenv trigger read failed: %d\n", trigger_ret);
 	}
 
-	/* Avoid pre-network NAND reads; use the environment MACs for recovery. */
+	/* Populate the Ethernet addresses before the network stack is initialized. */
+	/*
+	 * The normal U-Boot environment is intentionally disabled on XG2010G;
+	 * ethaddr therefore cannot be populated from env defaults.  Read the
+	 * factory MACs from the dsd MTD partition before eth_initialize() runs,
+	 * otherwise the Ethernet uclass generates a random locally-administered
+	 * address.  This is a small 4 KiB read and is safe after initr_nand.
+	 */
+	xg2010g_sync_runtime_ethaddrs();
 	ubi_part = xg2010g_detect_ubi_part();
 	snprintf(boot_ubi, sizeof(boot_ubi),
 		 "ubi part %s && run boot_production", ubi_part);
 	env_set("boot_ubi", boot_ubi);
 	/*
-	 * Do not touch raw NAND/UBI from board_late_init.  On this board the
-	 * first-stage loader may leave SNFI/DMA active; large early reads can
-	 * overwrite relocated U-Boot text before eth_initialize().  Factory
-	 * synchronisation is deferred to the normal production path.
+	 * Do not perform large raw NAND/UBI reads from board_late_init.  On this
+	 * board the first-stage loader may leave SNFI/DMA active; large early
+	 * reads can overwrite relocated U-Boot text before eth_initialize().
+	 * Factory synchronisation is deferred to the normal production path.
 	 */
 	/* Only the chainloader-private flag may select HTTP recovery. */
 	if (uenv_triggered) {
