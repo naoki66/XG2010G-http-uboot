@@ -2,6 +2,7 @@
 
 / {
 	compatible = "airoha,xg2010g-chainloader-control";
+	/* The shim expects the prefix-stripped FIT at loadaddr. */
 	fit-base = <0x81800000>;
 	payload-node = "uboot@1";
 	fallback-payload-load = <0x81e00000>;

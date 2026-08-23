@@ -22,8 +22,12 @@
 			arch = "arm64";
 			os = "linux";
 			compression = "__KCOMP__";
-			load = <0x80088000>;
-			entry = <0x80088000>;
+			/* 0x80000000..0x801fffff is reserved for ATF on XG2010G.
+			 * The Image text offset is 0x88000, so place its 2 MiB
+			 * aligned base at 0x80200000.
+			 */
+			load = <0x80288000>;
+			entry = <0x80288000>;
 			hash@1 {
 				algo = "sha1";
 			};

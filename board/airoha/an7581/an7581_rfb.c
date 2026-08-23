@@ -771,6 +771,7 @@ int board_late_init(void)
 {
 	char boot_ubi[64];
 	const char *ubi_part;
+	const char *bootcmd;
 	ulong recovery_addr;
 	bool uenv_triggered = false;
 
@@ -797,6 +798,37 @@ int board_late_init(void)
 	snprintf(boot_ubi, sizeof(boot_ubi),
 		 "ubi part %s && run boot_production", ubi_part);
 	env_set("boot_ubi", boot_ubi);
+	/*
+	 * The persistent environment may come from an older image whose
+	 * bootcmd starts with the removed legacy 'flash' command (for example
+	 * the factory 'flash imgread 2048;bootm' recipe). Once that
+	 * command fails, the rest of the old recipe can try to boot the
+	 * chainloader FIT left at loadaddr instead of the production FIT.
+	 * Normalize only these known legacy recipes; preserve user commands.
+	 */
+	bootcmd = env_get("bootcmd");
+	if (!bootcmd || !strncmp(bootcmd, "flash ", 6) ||
+	    strstr(bootcmd, "http_recovery")) {
+		env_set("bootcmd", "run boot_ubi");
+		printf("XG2010G: normalized legacy bootcmd to direct UBI FIT\n");
+	}
+	/* Older persistent environments may also lack the helper recipes that
+	 * the current boot_ubi command invokes. Restore only missing/legacy
+	 * definitions so the production FIT can be booted without erasing env. */
+	if (!env_get("ubi_read_production"))
+		env_set("ubi_read_production", "ubi read ${loadaddr} fit");
+	bootcmd = env_get("boot_production");
+	if (!bootcmd || !strncmp(bootcmd, "flash ", 6))
+		env_set("boot_production",
+		 "run ubi_read_production && bootm ${loadaddr}#${bootconf}");
+	/* The factory environment carries fdt_high=0xac000000 from the
+	 * vendor boot flow. That fixed ceiling forces the relocated DTB into
+	 * an unsuitable high-memory window on this 64-bit U-Boot. Let the
+	 * normal LMB allocator choose a valid, reserved-safe address instead. */
+	if (env_get("fdt_high")) {
+		env_set("fdt_high", NULL);
+		printf("XG2010G: cleared legacy fdt_high override\n");
+	}
 	/*
 	 * Do not perform large raw NAND/UBI reads from board_late_init.  On this
 	 * board the first-stage loader may leave SNFI/DMA active; large early
