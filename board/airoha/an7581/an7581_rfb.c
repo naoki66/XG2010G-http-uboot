@@ -819,7 +819,11 @@ int board_late_init(void)
 	if (!env_get("ubi_read_production"))
 		env_set("ubi_read_production", "ubi read ${loadaddr} fit");
 	bootcmd = env_get("boot_production");
-	if (!bootcmd || !strncmp(bootcmd, "flash ", 6))
+	/* Older environments may already contain boot_production, but omit the
+	 * FIT configuration selector.  bootm then fails even though iminfo sees a
+	 * valid config-1 node.  Normalize that stale recipe in-place. */
+	if (!bootcmd || !strncmp(bootcmd, "flash ", 6) ||
+	    !strstr(bootcmd, "#${bootconf}"))
 		env_set("boot_production",
 		 "run ubi_read_production && bootm ${loadaddr}#${bootconf}");
 	/* The factory environment carries fdt_high=0xac000000 from the
