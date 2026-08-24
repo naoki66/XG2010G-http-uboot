@@ -5,7 +5,6 @@ SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 UBOOT_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
 
 PREFIX_SHIM="$SCRIPT_DIR/chainloader-prefix-shim.uImage"
-SHIM="$SCRIPT_DIR/chainloader-shim.bin"
 BOARD="${5:-xg2010g}"
 DTB="$SCRIPT_DIR/$BOARD-chainloader-control.dtb"
 TEMPLATE="$SCRIPT_DIR/$BOARD-chainloader.its.in"
@@ -55,6 +54,15 @@ OUTPUT_PAYLOAD="$OUTPUT_DIR/${BOARD}-u-boot-${BUILD_STAMP}-g${COMMIT_ID}.bin"
 LATEST_FIT="$OUTPUT_DIR/$BOARD-chainloader.itb"
 LATEST_SLOT="$OUTPUT_DIR/$BOARD-chainloader-slot.bin"
 MAX_SLOT_SIZE=$((0x100000))
+MIN_PAYLOAD_SIZE=$((900 * 1024))
+FIT_OFFSET=$((0x2100))
+
+payload_size=$(wc -c < "$PAYLOAD")
+if [ "$payload_size" -lt "$MIN_PAYLOAD_SIZE" ]; then
+  echo "Error: payload is too small for a full secondary U-Boot: $payload_size bytes" >&2
+  echo "Refusing to package a shim-sized chainloader payload." >&2
+  exit 1
+fi
 
 TMPDIR=$(mktemp -d)
 trap 'rm -rf "$TMPDIR"' EXIT
@@ -63,19 +71,46 @@ ITS="$TMPDIR/$BOARD-chainloader.its"
 
 sed \
   -e "s|__DTB__|$DTB|g" \
-  -e "s|__SHIM__|$SHIM|g" \
   -e "s|__PAYLOAD__|$PAYLOAD|g" \
-  -e "s|__KCOMP__|none|g" \
   "$TEMPLATE" > "$ITS"
 
 echo "Building FIT image..."
 "$MKIMAGE" -f "$ITS" "$OUTPUT_FIT"
 "$DUMPIMAGE" -l "$OUTPUT_FIT"
 
+FIT_SUMMARY="$TMPDIR/$BOARD-chainloader-summary.txt"
+"$DUMPIMAGE" -l "$OUTPUT_FIT" > "$FIT_SUMMARY"
+fit_payload_size=$(awk '
+  /^[[:space:]]+Image [0-9]+ \(kernel@1\)/ { in_kernel = 1; next }
+  in_kernel && /^[[:space:]]+Data Size:/ { print $3; exit }
+' "$FIT_SUMMARY")
+fit_payload_load=$(awk '
+  /^[[:space:]]+Image [0-9]+ \(kernel@1\)/ { in_kernel = 1; next }
+  in_kernel && /^[[:space:]]+Load Address:/ { print $3; exit }
+' "$FIT_SUMMARY")
+fit_payload_entry=$(awk '
+  /^[[:space:]]+Image [0-9]+ \(kernel@1\)/ { in_kernel = 1; next }
+  in_kernel && /^[[:space:]]+Entry Point:/ { print $3; exit }
+' "$FIT_SUMMARY")
+
+if [ "$fit_payload_size" != "$payload_size" ]; then
+  echo "Error: FIT kernel@1 size ($fit_payload_size) does not match payload ($payload_size)" >&2
+  exit 1
+fi
+if [ "$fit_payload_load" != "0x81e00000" ] ||
+   [ "$fit_payload_entry" != "0x81e00000" ]; then
+  echo "Error: FIT kernel@1 load/entry is not 0x81e00000" >&2
+  exit 1
+fi
+
 echo "Building slot image..."
 prefix_size=$(wc -c < "$PREFIX_SHIM")
+if [ "$prefix_size" -gt "$FIT_OFFSET" ]; then
+  echo "Error: chainloader prefix exceeds FIT offset: $prefix_size bytes" >&2
+  exit 1
+fi
 cp "$PREFIX_SHIM" "$OUTPUT_SLOT"
-dd if=/dev/zero bs=1 count=$((0x2100 - prefix_size)) >> "$OUTPUT_SLOT" 2>/dev/null
+dd if=/dev/zero bs=1 count=$((FIT_OFFSET - prefix_size)) >> "$OUTPUT_SLOT" 2>/dev/null
 cat "$OUTPUT_FIT" >> "$OUTPUT_SLOT"
 
 # Stable aliases are retained for existing tooling; the timestamped files
@@ -93,7 +128,7 @@ echo ""
 echo "Done!"
 echo "  FIT:  $OUTPUT_FIT ($(wc -c < "$OUTPUT_FIT") bytes)"
 echo "  Slot: $OUTPUT_SLOT ($slot_size bytes; maximum $((MAX_SLOT_SIZE - 1)) bytes)"
-echo "  U-Boot payload: $OUTPUT_PAYLOAD ($(wc -c < "$OUTPUT_PAYLOAD") bytes)"
+echo "  U-Boot payload: $OUTPUT_PAYLOAD ($payload_size bytes)"
 echo "  Latest aliases: $LATEST_FIT, $LATEST_SLOT"
 echo ""
 echo "Magic check:"
