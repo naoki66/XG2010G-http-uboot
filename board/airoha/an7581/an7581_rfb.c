@@ -636,8 +636,14 @@ int board_late_init(void)
 	 * Keep board-late initialization out of the recovery path until the
 	 * built-in defaults have been saved to mtd4/recovery-env.
 	 */
-	if (gd->env_valid != ENV_VALID)
+	if (gd->env_valid != ENV_VALID) {
+		/* Initialise the dedicated recovery-env partition automatically. */
+		if (env_save())
+			printf("XG2010G: recovery-env initialization failed; console only\n");
+		else
+			printf("XG2010G: initialized recovery-env with default environment\n");
 		return 0;
+	}
 
 	printf("XG2010G release %s - %s\n",
 	       XG2010G_RELEASE_VERSION, XG2010G_RELEASE_CREDIT);
