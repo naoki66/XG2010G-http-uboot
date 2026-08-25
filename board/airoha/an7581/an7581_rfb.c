@@ -37,12 +37,21 @@ DECLARE_GLOBAL_DATA_PTR;
 #define XG2010G_REG_GPIO_OE1		0x0078
 
 #define XG2010G_DSD_PART		"dsd"
+#define XG2010G_FACTORY_ENV_PART	"uenv"
 #define XG2010G_UBI_PART		"system"
 #define XG2010G_FACTORY_VOL		"factory"
 #define XG2010G_DSD_ENV_SIZE		0x4000
 #define XG2010G_FACTORY_WAN_MAC_OFFSET	0x5000
 #define XG2010G_FACTORY_LAN_MAC_OFFSET	0x6000
 #define XG2010G_FACTORY_SIZE		(XG2010G_FACTORY_LAN_MAC_OFFSET + ARP_HLEN)
+#define XG2010G_FACTORY_ONU_TYPE_MAX	8
+#define XG2010G_FACTORY_SERDES_MAX	8
+
+/* These values identify the production PON/SerDes mode.  Keep them separate
+ * from recovery-env so a recovery setting cannot accidentally be persisted
+ * as a vendor configuration. */
+static char xg2010g_factory_onu_type[XG2010G_FACTORY_ONU_TYPE_MAX];
+static char xg2010g_factory_serdes_ethernet[XG2010G_FACTORY_SERDES_MAX];
 
 struct xg2010g_ubi_layout {
 	const char *version;
@@ -304,6 +313,112 @@ static int xg2010g_get_dsd_ethaddrs(u8 *lan_mac, u8 *wan_mac)
 out:
 	free(buf);
 	return ret;
+}
+
+static int xg2010g_factory_env_get(const u8 *env, size_t env_len,
+				   const char *key, char *value,
+				   size_t value_len)
+{
+	const u8 *data;
+	const u8 *end;
+	size_t key_len;
+
+	if (!env || env_len <= sizeof(u32) || !key || !value || !value_len)
+		return -EINVAL;
+
+	data = env + sizeof(u32);
+	end = env + env_len;
+	key_len = strlen(key);
+
+	while (data < end && *data) {
+		const u8 *entry_end = memchr(data, '\0', end - data);
+		const u8 *equals;
+		size_t copy_len;
+
+		if (!entry_end)
+			break;
+		equals = memchr(data, '=', entry_end - data);
+		if (equals && equals - data == key_len &&
+		    !memcmp(data, key, key_len)) {
+			copy_len = entry_end - equals - 1;
+			if (!copy_len || copy_len >= value_len)
+				return -EINVAL;
+			memcpy(value, equals + 1, copy_len);
+			value[copy_len] = '\0';
+			return 0;
+		}
+		data = entry_end + 1;
+	}
+
+	return -ENOENT;
+}
+
+static bool xg2010g_valid_hex_value(const char *value, size_t expected_len)
+{
+	size_t i;
+
+	if (!value || strlen(value) != expected_len)
+		return false;
+	for (i = 0; i < expected_len; i++)
+		if (!isxdigit((unsigned char)value[i]))
+			return false;
+	return true;
+}
+
+/* Read only the production values that must be reflected in the FIT DTB. */
+static void xg2010g_load_factory_bootargs(void)
+{
+	struct mtd_info *mtd;
+	u8 *buf;
+	u32 stored_crc;
+	char onu_type[XG2010G_FACTORY_ONU_TYPE_MAX];
+	char serdes_ethernet[XG2010G_FACTORY_SERDES_MAX];
+	int ret;
+
+	mtd_probe_devices();
+	mtd = get_mtd_device_nm(XG2010G_FACTORY_ENV_PART);
+	if (IS_ERR_OR_NULL(mtd))
+		return;
+	if (mtd->size < CONFIG_ENV_SIZE)
+		goto out_put;
+
+	buf = malloc(CONFIG_ENV_SIZE);
+	if (!buf)
+		goto out_put;
+
+	ret = xg2010g_mtd_read_logical(mtd, 0, CONFIG_ENV_SIZE, buf);
+	if (ret)
+		goto out_free;
+
+	memcpy(&stored_crc, buf, sizeof(stored_crc));
+	if (stored_crc != crc32(0, buf + sizeof(u32),
+				CONFIG_ENV_SIZE - sizeof(u32)))
+		goto out_free;
+
+	if (!xg2010g_factory_env_get(buf, CONFIG_ENV_SIZE, "onu_type",
+				      onu_type, sizeof(onu_type)) &&
+	    xg2010g_valid_hex_value(onu_type, 2)) {
+		strlcpy(xg2010g_factory_onu_type, onu_type,
+			 sizeof(xg2010g_factory_onu_type));
+	}
+	if (!xg2010g_factory_env_get(buf, CONFIG_ENV_SIZE, "serdes_ethernet",
+				      serdes_ethernet, sizeof(serdes_ethernet)) &&
+	    xg2010g_valid_hex_value(serdes_ethernet, 3)) {
+		strlcpy(xg2010g_factory_serdes_ethernet, serdes_ethernet,
+			 sizeof(xg2010g_factory_serdes_ethernet));
+	}
+
+	if (xg2010g_factory_onu_type[0] ||
+	    xg2010g_factory_serdes_ethernet[0])
+		printf("XG2010G: factory mode onu_type=%s serdes_ethernet=%s\n",
+		       xg2010g_factory_onu_type[0] ? xg2010g_factory_onu_type : "-",
+		       xg2010g_factory_serdes_ethernet[0] ?
+		       xg2010g_factory_serdes_ethernet : "-");
+
+out_free:
+	free(buf);
+out_put:
+	put_mtd_device(mtd);
 }
 
 static int xg2010g_create_ubi_volume(const char *name, size_t size)
@@ -717,6 +832,7 @@ static int xg2010g_replace_fdt_bootarg(void *blob, const char *name,
 static void xg2010g_fixup_fdt_bootargs(void *blob)
 {
 	const char *onu_type;
+	const char *serdes_ethernet;
 	u8 lan_mac[ARP_HLEN];
 	char mac_str[ARP_HLEN_ASCII + 1];
 	int ret;
@@ -724,11 +840,22 @@ static void xg2010g_fixup_fdt_bootargs(void *blob)
 	if (!xg2010g_is_compatible())
 		return;
 
-	onu_type = env_get("onu_type");
+	onu_type = xg2010g_factory_onu_type[0] ? xg2010g_factory_onu_type :
+		   env_get("onu_type");
 	if (onu_type && *onu_type) {
 		ret = xg2010g_replace_fdt_bootarg(blob, "onu_type", onu_type);
 		if (ret)
 			printf("XG2010G: failed to update bootargs onu_type: %d\n",
+			       ret);
+	}
+
+	serdes_ethernet = xg2010g_factory_serdes_ethernet[0] ?
+			  xg2010g_factory_serdes_ethernet : env_get("serdes_ethernet");
+	if (serdes_ethernet && *serdes_ethernet) {
+		ret = xg2010g_replace_fdt_bootarg(blob, "serdes_ethernet",
+						  serdes_ethernet);
+		if (ret)
+			printf("XG2010G: failed to update bootargs serdes_ethernet: %d\n",
 			       ret);
 	}
 
@@ -804,6 +931,13 @@ int board_late_init(void)
 	 * after initr_nand.
 	 */
 	xg2010g_sync_runtime_ethaddrs();
+	/*
+	 * The production environment lives in uenv (mtd1), while recovery
+	 * settings live in recovery-env (mtd4). Import only the mode selectors
+	 * needed by the production FIT; never merge the vendor environment into
+	 * the recovery environment.
+	 */
+	xg2010g_load_factory_bootargs();
 	ubi_part = xg2010g_detect_ubi_part();
 	snprintf(boot_ubi, sizeof(boot_ubi),
 		 "ubi part %s && run boot_production", ubi_part);
