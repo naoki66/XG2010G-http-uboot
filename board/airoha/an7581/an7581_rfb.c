@@ -16,6 +16,7 @@
 #include <ubi_uboot.h>
 #include <xg2010g_version.h>
 #include <linux/bitops.h>
+#include <linux/ctype.h>
 #include <linux/err.h>
 #include <linux/kconfig.h>
 #include <linux/string.h>
@@ -630,6 +631,120 @@ static void xg2010g_fixup_fdt_macs(void *blob)
 	}
 }
 
+/*
+ * The production FIT carries a vendor bootargs string in its own DTB.
+ * Keep the immutable defaults there, but replace values that are persisted
+ * in U-Boot env before Linux sees the command line.
+ */
+static int xg2010g_replace_fdt_bootarg(void *blob, const char *name,
+				       const char *value)
+{
+	int chosen, src_len;
+	const char *src;
+	const char *pos;
+	char *out, *dst;
+	size_t name_len, value_len, out_size;
+	bool found = false;
+	int ret;
+
+	if (!name || !*name || !value || !*value)
+		return 0;
+
+	chosen = fdt_path_offset(blob, "/chosen");
+	if (chosen < 0)
+		return chosen;
+
+	src = fdt_getprop(blob, chosen, "bootargs", &src_len);
+	if (!src || src_len < 0)
+		return 0;
+
+	name_len = strlen(name);
+	value_len = strlen(value);
+	out_size = src_len + name_len + value_len + 3;
+	out = malloc(out_size);
+	if (!out)
+		return -ENOMEM;
+
+	dst = out;
+	pos = src;
+	while (*pos) {
+		const char *token;
+		size_t token_len;
+
+		while (*pos && isspace(*pos))
+			pos++;
+		if (!*pos)
+			break;
+
+		token = pos;
+		while (*pos && !isspace(*pos))
+			pos++;
+		token_len = pos - token;
+
+		if (dst != out)
+			*dst++ = ' ';
+		if (token_len > name_len &&
+		    !memcmp(token, name, name_len) &&
+		    token[name_len] == '=') {
+			memcpy(dst, name, name_len);
+			dst += name_len;
+			*dst++ = '=';
+			memcpy(dst, value, value_len);
+			dst += value_len;
+			found = true;
+		} else {
+			memcpy(dst, token, token_len);
+			dst += token_len;
+		}
+	}
+
+	if (!found) {
+		if (dst != out)
+			*dst++ = ' ';
+		memcpy(dst, name, name_len);
+		dst += name_len;
+		*dst++ = '=';
+		memcpy(dst, value, value_len);
+		dst += value_len;
+	}
+	*dst = '\0';
+
+	ret = fdt_setprop(blob, chosen, "bootargs", out, dst - out + 1);
+	free(out);
+	return ret;
+}
+
+static void xg2010g_fixup_fdt_bootargs(void *blob)
+{
+	const char *onu_type;
+	u8 lan_mac[ARP_HLEN];
+	char mac_str[ARP_HLEN_ASCII + 1];
+	int ret;
+
+	if (!xg2010g_is_compatible())
+		return;
+
+	onu_type = env_get("onu_type");
+	if (onu_type && *onu_type) {
+		ret = xg2010g_replace_fdt_bootarg(blob, "onu_type", onu_type);
+		if (ret)
+			printf("XG2010G: failed to update bootargs onu_type: %d\n",
+			       ret);
+	}
+
+	if (!eth_env_get_enetaddr("ethaddr", lan_mac) ||
+	    !is_valid_ethaddr(lan_mac))
+		return;
+
+	snprintf(mac_str, sizeof(mac_str),
+		 "%02x:%02x:%02x:%02x:%02x:%02x",
+		 lan_mac[0], lan_mac[1], lan_mac[2], lan_mac[3], lan_mac[4],
+		 lan_mac[5]);
+	ret = xg2010g_replace_fdt_bootarg(blob, "ethaddr", mac_str);
+	if (ret)
+		printf("XG2010G: failed to update bootargs ethaddr: %d\n", ret);
+}
+
 int board_init(void)
 {
 	/* address of boot parameters */
@@ -797,6 +912,7 @@ int ft_board_setup(void *blob, struct bd_info *bd)
 		return 0;
 
 	xg2010g_fixup_fdt_macs(blob);
+	xg2010g_fixup_fdt_bootargs(blob);
 
 	return 0;
 }
