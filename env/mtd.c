@@ -149,6 +149,9 @@ static int env_mtd_load(void)
 	u32 offset;
 	int ret;
 
+	/* Do not treat built-in defaults as a valid persistent environment. */
+	gd->env_valid = ENV_INVALID;
+
 	buf = (char *)memalign(ARCH_DMA_MINALIGN, CONFIG_ENV_SIZE);
 	if (!buf) {
 		env_set_default("memalign() failed", 0);
