@@ -5,6 +5,7 @@ SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 UBOOT_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
 
 PREFIX_SHIM="$SCRIPT_DIR/chainloader-prefix-shim.uImage"
+SHIM="$SCRIPT_DIR/chainloader-shim.bin"
 BOARD="${5:-xg2010g}"
 DTB="$SCRIPT_DIR/$BOARD-chainloader-control.dtb"
 TEMPLATE="$SCRIPT_DIR/$BOARD-chainloader.its.in"
@@ -13,6 +14,7 @@ PAYLOAD="$(realpath "${1:-$UBOOT_DIR/u-boot.bin}")"
 OUTPUT_DIR="$(realpath -m "${2:-$UBOOT_DIR/out}")"
 MKIMAGE="${3:-$UBOOT_DIR/tools/mkimage}"
 DUMPIMAGE="${4:-$UBOOT_DIR/tools/dumpimage}"
+FDTGET="${FDTGET:-fdtget}"
 
 if [ ! -f "$PAYLOAD" ]; then
     echo "Error: payload not found: $PAYLOAD" >&2
@@ -21,6 +23,16 @@ fi
 
 if [ ! -f "$MKIMAGE" ]; then
     echo "Error: mkimage not found: $MKIMAGE" >&2
+    exit 1
+fi
+
+if ! command -v "$FDTGET" >/dev/null 2>&1; then
+    echo "Error: fdtget not found: $FDTGET" >&2
+    exit 1
+fi
+
+if [ ! -f "$SHIM" ]; then
+    echo "Error: chainloader shim not found: $SHIM" >&2
     exit 1
 fi
 
@@ -42,6 +54,7 @@ BUILD_STAMP="${XG2010G_BUILD_STAMP:-$(date +%Y%m%d-%H%M%S)}"
 EXPECTED_COMMIT="$(git -C "$UBOOT_DIR" rev-parse --short=12 HEAD 2>/dev/null || echo unknown)"
 PAYLOAD_VERSION="$(strings "$PAYLOAD" 2>/dev/null | sed -n 's/.*U-Boot \(XG2010G-recovery-[^ ]*\).*/\1/p' | head -1 || true)"
 if [ -n "$PAYLOAD_VERSION" ] && [ "$EXPECTED_COMMIT" != "unknown" ] &&
+   [ "${ALLOW_PAYLOAD_VERSION_MISMATCH:-0}" != "1" ] &&
    [[ "$PAYLOAD_VERSION" != *"-g${EXPECTED_COMMIT}"* ]]; then
   echo "Error: payload version '$PAYLOAD_VERSION' does not match HEAD '$EXPECTED_COMMIT'. Rebuild U-Boot before packaging." >&2
   exit 1
@@ -58,9 +71,17 @@ MIN_PAYLOAD_SIZE=$((900 * 1024))
 FIT_OFFSET=$((0x2100))
 
 payload_size=$(wc -c < "$PAYLOAD")
+shim_size=$(wc -c < "$SHIM")
 if [ "$payload_size" -lt "$MIN_PAYLOAD_SIZE" ]; then
   echo "Error: payload is too small for a full secondary U-Boot: $payload_size bytes" >&2
   echo "Refusing to package a shim-sized chainloader payload." >&2
+  exit 1
+fi
+
+control_fit_base=$("$FDTGET" -tx "$DTB" / fit-base)
+printf -v expected_fit_base '%x' $((0x81800000 + FIT_OFFSET))
+if [ "$control_fit_base" != "$expected_fit_base" ]; then
+  echo "Error: control DTB fit-base is 0x$control_fit_base; expected 0x$expected_fit_base" >&2
   exit 1
 fi
 
@@ -71,7 +92,9 @@ ITS="$TMPDIR/$BOARD-chainloader.its"
 
 sed \
   -e "s|__DTB__|$DTB|g" \
+  -e "s|__SHIM__|$SHIM|g" \
   -e "s|__PAYLOAD__|$PAYLOAD|g" \
+  -e "s|__KCOMP__|none|g" \
   "$TEMPLATE" > "$ITS"
 
 echo "Building FIT image..."
@@ -80,26 +103,39 @@ echo "Building FIT image..."
 
 FIT_SUMMARY="$TMPDIR/$BOARD-chainloader-summary.txt"
 "$DUMPIMAGE" -l "$OUTPUT_FIT" > "$FIT_SUMMARY"
-fit_payload_size=$(awk '
-  /^[[:space:]]+Image [0-9]+ \(kernel@1\)/ { in_kernel = 1; next }
-  in_kernel && /^[[:space:]]+Data Size:/ { print $3; exit }
-' "$FIT_SUMMARY")
-fit_payload_load=$(awk '
-  /^[[:space:]]+Image [0-9]+ \(kernel@1\)/ { in_kernel = 1; next }
-  in_kernel && /^[[:space:]]+Load Address:/ { print $3; exit }
-' "$FIT_SUMMARY")
-fit_payload_entry=$(awk '
-  /^[[:space:]]+Image [0-9]+ \(kernel@1\)/ { in_kernel = 1; next }
-  in_kernel && /^[[:space:]]+Entry Point:/ { print $3; exit }
-' "$FIT_SUMMARY")
+fit_image_field() {
+  local image="$1"
+  local field="$2"
 
-if [ "$fit_payload_size" != "$payload_size" ]; then
-  echo "Error: FIT kernel@1 size ($fit_payload_size) does not match payload ($payload_size)" >&2
+  awk -v image="$image" -v field="$field" '
+    $1 == "Image" && $3 == "(" image ")" { in_image = 1; next }
+    in_image && $1 == field { print $3; exit }
+  ' "$FIT_SUMMARY"
+}
+
+fit_shim_size=$(fit_image_field kernel@1 "Data")
+fit_payload_size=$(fit_image_field uboot@1 "Data")
+fit_shim_load=$("$FDTGET" -tx "$OUTPUT_FIT" '/images/kernel@1' load)
+fit_shim_entry=$("$FDTGET" -tx "$OUTPUT_FIT" '/images/kernel@1' entry)
+fit_payload_load=$("$FDTGET" -tx "$OUTPUT_FIT" '/images/uboot@1' load)
+fit_payload_entry=$("$FDTGET" -tx "$OUTPUT_FIT" '/images/uboot@1' entry)
+
+if [ "$fit_shim_size" != "$shim_size" ]; then
+  echo "Error: FIT kernel@1 size ($fit_shim_size) does not match shim ($shim_size)" >&2
   exit 1
 fi
-if [ "$fit_payload_load" != "0x81e00000" ] ||
-   [ "$fit_payload_entry" != "0x81e00000" ]; then
-  echo "Error: FIT kernel@1 load/entry is not 0x81e00000" >&2
+if [ "$fit_shim_load" != "80288000" ] ||
+   [ "$fit_shim_entry" != "80288000" ]; then
+  echo "Error: FIT kernel@1 shim load/entry is not 0x80288000" >&2
+  exit 1
+fi
+if [ "$fit_payload_size" != "$payload_size" ]; then
+  echo "Error: FIT uboot@1 size ($fit_payload_size) does not match payload ($payload_size)" >&2
+  exit 1
+fi
+if [ "$fit_payload_load" != "81e00000" ] ||
+   [ "$fit_payload_entry" != "81e00000" ]; then
+  echo "Error: FIT uboot@1 load/entry is not 0x81e00000" >&2
   exit 1
 fi
 
