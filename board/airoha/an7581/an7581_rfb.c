@@ -630,72 +630,6 @@ static void xg2010g_fixup_fdt_macs(void *blob)
 	}
 }
 
-static bool xg2010g_is_hex_digit(char c)
-{
-	return (c >= '0' && c <= '9') || (c >= 'a' && c <= 'f') ||
-	       (c >= 'A' && c <= 'F');
-}
-
-static int xg2010g_fixup_fdt_bootarg(void *blob, const char *name,
-				      const char *value)
-{
-	char input[2048], output[2048], replacement[64];
-	const char *bootargs;
-	char *cursor, *token;
-	int chosen, ret;
-	bool replaced = false;
-	size_t used = 0;
-
-	if (!name || !value || !*value)
-		return -EINVAL;
-
-	chosen = fdt_path_offset(blob, "/chosen");
-	if (chosen < 0)
-		return chosen;
-
-	bootargs = fdt_getprop(blob, chosen, "bootargs", NULL);
-	if (!bootargs)
-		return -FDT_ERR_NOTFOUND;
-	if (strlen(bootargs) >= sizeof(input))
-		return -E2BIG;
-
-	snprintf(replacement, sizeof(replacement), "%s=%s", name, value);
-	strncpy(input, bootargs, sizeof(input));
-	input[sizeof(input) - 1] = '\0';
-	cursor = input;
-	while ((token = strsep(&cursor, " \t\r\n")) != NULL) {
-		const char *word = token;
-		size_t word_len;
-
-		if (!*word)
-			continue;
-		if (!strncmp(word, name, strlen(name)) &&
-		    word[strlen(name)] == '=') {
-			word = replacement;
-			replaced = true;
-		}
-		word_len = strlen(word);
-		if (used && used + 1 < sizeof(output))
-			output[used++] = ' ';
-		if (used + word_len >= sizeof(output))
-			return -E2BIG;
-		memcpy(output + used, word, word_len);
-		used += word_len;
-	}
-
-	if (!replaced) {
-		if (used && used + 1 < sizeof(output))
-			output[used++] = ' ';
-		if (used + strlen(replacement) >= sizeof(output))
-			return -E2BIG;
-		memcpy(output + used, replacement, strlen(replacement));
-		used += strlen(replacement);
-	}
-	output[used] = '\0';
-	ret = fdt_setprop(blob, chosen, "bootargs", output, used + 1);
-	return ret;
-}
-
 int board_init(void)
 {
 	/* address of boot parameters */
@@ -859,34 +793,10 @@ int board_late_init(void)
 #if defined(CONFIG_OF_LIBFDT) && defined(CONFIG_OF_BOARD_SETUP)
 int ft_board_setup(void *blob, struct bd_info *bd)
 {
-	const char *onu_type;
-	const char *ethaddr;
-	int ret;
-
 	if (!blob)
 		return 0;
 
 	xg2010g_fixup_fdt_macs(blob);
-
-	/* FIT bootargs are the safe baseline. Only mutable identity tokens come
-	 * from recovery-env; legacy root=/dev/fit0 and tclinux_info never do. */
-	onu_type = env_get("onu_type");
-	if (onu_type && strlen(onu_type) == 2 &&
-	    xg2010g_is_hex_digit(onu_type[0]) &&
-	    xg2010g_is_hex_digit(onu_type[1])) {
-		ret = xg2010g_fixup_fdt_bootarg(blob, "onu_type", onu_type);
-		if (ret && ret != -FDT_ERR_NOTFOUND)
-			printf("XG2010G: failed to inject onu_type into bootargs: %d\n",
-			       ret);
-	}
-
-	ethaddr = env_get("ethaddr");
-	if (ethaddr && strlen(ethaddr) == ARP_HLEN_ASCII) {
-		ret = xg2010g_fixup_fdt_bootarg(blob, "ethaddr", ethaddr);
-		if (ret && ret != -FDT_ERR_NOTFOUND)
-			printf("XG2010G: failed to inject ethaddr into bootargs: %d\n",
-			       ret);
-	}
 
 	return 0;
 }
