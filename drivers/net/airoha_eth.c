@@ -5579,6 +5579,16 @@ static int airoha_gdm4_phy_link_up(struct airoha_eth *eth)
 	if (!eth->gdm4_usb_hsgmii || !eth->gdm4_phy)
 		return 0;
 
+	/*
+	 * A PHY startup performs a blocking auto-negotiation wait.  The
+	 * recovery image normally serves the switch/10G LAN ports, so probing
+	 * an unconnected USB/2.5G PHY must not stall every boot.  Only start it
+	 * when that port was explicitly selected.
+	 */
+	if (!eth->gdm4_phy_started &&
+	    !airoha_recovery_port_is_gdm4(eth))
+		return 0;
+
 	if (!eth->gdm4_phy_started) {
 		ret = phy_startup(eth->gdm4_phy);
 		/* Do not restart autonegotiation from the HTTP poll loop. */
@@ -5595,6 +5605,13 @@ static int airoha_gdm4_usb_phy_link_up(struct airoha_eth *eth)
 	int ret;
 
 	if (!eth->gdm4_dual_hsgmii || !eth->gdm4_usb_phy)
+		return 0;
+
+	/* See airoha_gdm4_phy_link_up(): defer the blocking PHY15 startup in
+	 * automatic/dual-service mode.  An explicit recovery_port=usb (or
+	 * lan3/2.5g) request opts in to probing this PHY. */
+	if (!eth->gdm4_usb_phy_started &&
+	    !airoha_recovery_port_is_gdm4_usb(eth))
 		return 0;
 
 	if (!eth->gdm4_usb_phy_started) {
@@ -7008,9 +7025,16 @@ static int airoha_switch_init(struct udevice *dev, struct airoha_eth *eth)
 			} else {
 				eth->gdm4_usb_phy->node = eth->gdm4_usb_phy_node;
 				ret = phy_config(eth->gdm4_usb_phy);
-				if (!ret)
+				/* Do not block boot waiting for an absent USB PHY. */
+				if (!ret && airoha_recovery_port_is_gdm4_usb(eth)) {
 					ret = phy_startup(eth->gdm4_usb_phy);
-				eth->gdm4_usb_phy_started = true;
+					eth->gdm4_usb_phy_started = true;
+				} else {
+					eth->gdm4_usb_phy_started = false;
+					if (!ret)
+						printf("gdm4-usb: PHY%d startup deferred until USB recovery port is selected\n",
+						       eth->gdm4_usb_phy_addr);
+				}
 				if (ret) {
 					printf("gdm4-usb: PHY%d initialization failed: %d; keeping switch LAN enabled\n",
 					       eth->gdm4_usb_phy_addr, ret);
