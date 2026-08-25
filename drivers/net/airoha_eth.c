@@ -6993,9 +6993,16 @@ static int airoha_switch_init(struct udevice *dev, struct airoha_eth *eth)
 			} else {
 				eth->gdm4_phy->node = eth->gdm4_phy_node;
 				ret = phy_config(eth->gdm4_phy);
-				if (!ret)
+				/* Do not block boot waiting for an absent 2.5G PHY. */
+				if (!ret && airoha_recovery_port_is_gdm4(eth)) {
 					ret = phy_startup(eth->gdm4_phy);
-				eth->gdm4_phy_started = true;
+					eth->gdm4_phy_started = true;
+				} else {
+					eth->gdm4_phy_started = false;
+					if (!ret)
+						printf("gdm4: PHY%d startup deferred until GDM4 recovery port is selected\n",
+						       eth->gdm4_phy_addr);
+				}
 				if (ret) {
 					printf("gdm4: PHY%d initialization failed: %d; keeping switch LAN enabled\n",
 					       eth->gdm4_phy_addr, ret);
