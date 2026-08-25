@@ -183,13 +183,18 @@
 
 		partition@600000 {
 			label = "chainloader";
-			reg = <0x00600000 0x00100000>;
+			reg = <0x00600000 0x00200000>;
 			read-only;
 		};
 
-		partition@700000 {
+		partition@800000 {
+			label = "recovery-env";
+			reg = <0x00800000 0x00200000>;
+		};
+
+		partition@a00000 {
 			label = "system";
-			reg = <0x00700000 0x1b700000>;
+			reg = <0x00a00000 0x1b400000>;
 			compatible = "linux,ubi";
 
 			volumes {

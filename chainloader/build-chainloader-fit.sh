@@ -53,7 +53,7 @@ OUTPUT_SLOT="$OUTPUT_DIR/${OUTPUT_PREFIX}-slot.bin"
 OUTPUT_PAYLOAD="$OUTPUT_DIR/${BOARD}-u-boot-${BUILD_STAMP}-g${COMMIT_ID}.bin"
 LATEST_FIT="$OUTPUT_DIR/$BOARD-chainloader.itb"
 LATEST_SLOT="$OUTPUT_DIR/$BOARD-chainloader-slot.bin"
-MAX_SLOT_SIZE=$((0x100000))
+MAX_SLOT_SIZE=$((0x200000))
 MIN_PAYLOAD_SIZE=$((900 * 1024))
 FIT_OFFSET=$((0x2100))
 
@@ -121,7 +121,7 @@ cp "$OUTPUT_SLOT" "$LATEST_SLOT"
 
 slot_size=$(wc -c < "$OUTPUT_SLOT")
 if [ "$slot_size" -ge "$MAX_SLOT_SIZE" ]; then
-  echo "Error: chainloader slot is not smaller than 1 MiB: $slot_size bytes" >&2
+  echo "Error: chainloader slot is not smaller than 2 MiB: $slot_size bytes" >&2
   exit 1
 fi
 echo ""
