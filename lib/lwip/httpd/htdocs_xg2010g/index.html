@@ -1,9 +1,9 @@
 <!doctype html>
-<html lang='en'>
+<html lang='zh-CN'>
 <head>
 <meta charset='utf-8'>
 <meta name='viewport' content='width=device-width,initial-scale=1'>
-<title>XG2010G Recovery Mode</title>
+<title>XG2010G 恢复模式</title>
 <style>
 :root{
   color-scheme:light;
@@ -361,18 +361,18 @@ button,input,select{font:inherit;letter-spacing:0}
 <div class='app'>
   <aside class='sidebar'>
     <div class='brand'>
-      <strong>XG2010G Recovery Mode</strong><span>Recovery WebUI</span>
+      <strong>XG2010G 恢复模式</strong><span>恢复 Web 界面</span>
     </div>
-    <nav class='nav' aria-label='Recovery target'>
-      <button class='nav-button active' type='button' data-target='firmware' aria-current='page'><span class='nav-dot'></span>Firmware Recovery</button>
-      <button class='nav-button' type='button' data-target='uboot'><span class='nav-dot'></span>Update U-Boot</button>
+    <nav class='nav' aria-label='恢复目标'>
+      <button class='nav-button active' type='button' data-target='firmware' aria-current='page'><span class='nav-dot'></span>恢复固件</button>
+      <button class='nav-button' type='button' data-target='uboot'><span class='nav-dot'></span>更新 U-Boot</button>
     </nav>
     <div class='side-actions'>
-      <button class='reboot-button' id='reboot-button' type='button'>Reboot to System</button>
+      <button class='reboot-button' id='reboot-button' type='button'>重启进入系统</button>
     </div>
     <div class='side-meta'>
       <strong>192.168.255.1</strong>
-      <a class='version-link' href='https://github.com/naoki66/XG2010G-http-uboot/releases' target='_blank' rel='noopener'><span id='version'>Loading U-Boot version...</span></a>
+      <a class='version-link' href='https://github.com/naoki66/XG2010G-http-uboot/releases' target='_blank' rel='noopener'><span id='version'>正在加载 U-Boot 版本...</span></a>
     </div>
   </aside>
 
@@ -381,66 +381,66 @@ button,input,select{font:inherit;letter-spacing:0}
       <section class='panel'>
         <div class='panel-inner'>
           <header class='heading'>
-            <h1 id='page-title'>Firmware Recovery</h1>
-            <p id='page-copy'>Upload an OpenWrt FIT image and recreate the UBI 2.0 layout.</p>
+            <h1 id='page-title'>恢复固件</h1>
+            <p id='page-copy'>上传 OpenWrt FIT 镜像并重新创建 UBI 2.0 布局。</p>
           </header>
 
           <div class='target-info'>
-            <span class='target-label'>Target</span><span class='target-value' id='target-value'>ubi:fit</span>
-            <span class='target-label'>Operation</span><span class='target-value' id='scope-value'>Erase and recreate the complete selected UBI partition</span>
-            <span class='target-label'>Environment</span><span class='target-value' id='preserve-value'>Loaded from mtd1/uenv; recovery_trigger is chainloader-private</span>
-            <span class='target-label'>Detected</span><span class='target-value' id='detected-layout'>Checking current layout...</span>
+            <span class='target-label'>目标</span><span class='target-value' id='target-value'>ubi:fit</span>
+            <span class='target-label'>操作</span><span class='target-value' id='scope-value'>擦除并重新创建选定的 UBI 分区</span>
+            <span class='target-label'>环境</span><span class='target-value' id='preserve-value'>Recovery 环境位于 mtd4/recovery-env</span>
+            <span class='target-label'>检测结果</span><span class='target-value' id='detected-layout'>正在检测当前布局...</span>
           </div>
 
           <div class='layout-block' id='layout-block'>
-            <label class='layout-label'>Image UBI layout</label>
-            <p class='layout-help' id='layout-help'>UBI 2.0 - 439 MiB system partition (fixed layout, no selection needed)</p>
+            <label class='layout-label'>镜像 UBI 布局</label>
+            <p class='layout-help' id='layout-help'>UBI 2.0 - 439 MiB system 分区（固定布局，无需选择）</p>
           </div>
 
           <div class='file-block'>
-            <label class='file-label'>Select image file</label>
+            <label class='file-label'>选择镜像文件</label>
             <input id='file-input' type='file' accept='.bin,.img,.itb'>
             <div class='file-row'>
-              <button class='choose-button' id='choose-button' type='button'>Choose File</button>
-              <span class='file-name' id='file-name'>No file selected</span>
+              <button class='choose-button' id='choose-button' type='button'>选择文件</button>
+              <span class='file-name' id='file-name'>未选择文件</span>
             </div>
-            <p class='file-help' id='file-help'>Firmware images must be at least 1 MiB</p>
+            <p class='file-help' id='file-help'>固件镜像大小至少为 1 MiB</p>
           </div>
 
           <div class='upload-wrap'>
-            <button class='upload-button' id='upload-button' type='button' disabled>Upload and Recover</button>
+            <button class='upload-button' id='upload-button' type='button' disabled>上传并恢复</button>
           </div>
 
-          <section class='progress-section' aria-label='Recovery progress'>
+            <section class='progress-section' aria-label='恢复进度'>
             <div class='progress-head'>
-              <strong>Recovery Progress</strong>
-              <span class='state' id='state' data-tone='idle'>Idle</span>
+              <strong>恢复进度</strong>
+              <span class='state' id='state' data-tone='idle'>空闲</span>
             </div>
-            <p class='status-message' id='status-message'>Select an image file.</p>
+            <p class='status-message' id='status-message'>请选择镜像文件。</p>
             <div class='progress-row' id='row-upload'>
-              <span class='progress-label'>Upload</span>
+              <span class='progress-label'>上传</span>
               <div class='progress-track'><div class='progress-fill' id='upload-fill'></div></div>
               <span class='progress-percent' id='upload-percent'>0%</span>
             </div>
             <div class='progress-row' id='row-erase'>
-              <span class='progress-label'>Erase</span>
+              <span class='progress-label'>擦除</span>
               <div class='progress-track'><div class='progress-fill' id='erase-fill'></div></div>
               <span class='progress-percent' id='erase-percent'>0%</span>
             </div>
             <div class='progress-row' id='row-write'>
-              <span class='progress-label'>Write</span>
+              <span class='progress-label'>写入</span>
               <div class='progress-track'><div class='progress-fill' id='write-fill'></div></div>
               <span class='progress-percent' id='write-percent'>0%</span>
             </div>
           </section>
 
           <aside class='notice'>
-            <strong>Important</strong>
+            <strong>重要提示</strong>
             <ul id='notice-list'>
-              <li class='critical-warning'>Do not power off or reboot the device during recovery!</li>
-              <li>The selected UBI partition is fully erased and rebuilt.</li>
-              <li>The selection must match the image's embedded device tree.</li>
-              <li>The device restarts automatically when recovery completes.</li>
+              <li class='critical-warning'>恢复过程中请勿断电或重启设备！</li>
+              <li>选定的 UBI 分区将被完全擦除并重建。</li>
+              <li>所选布局必须与镜像内置的设备树匹配。</li>
+              <li>恢复完成后设备将自动重启。</li>
             </ul>
           </aside>
         </div>
@@ -461,29 +461,29 @@ var pollOutcome=0;
 
 var profiles={
 	  firmware:{
-	    title:'Firmware Recovery',
-	    copy:'Upload an OpenWrt FIT image and recreate the UBI 2.0 layout.',
+    title:'恢复固件',
+    copy:'上传 OpenWrt FIT 镜像并重新创建 UBI 2.0 布局。',
 	    target:'ubi:fit',
-		    scope:'Erase and recreate the complete system UBI partition',
-	    preserve:'Loaded from mtd1/uenv; recovery_trigger is chainloader-private',
-	    help:'Firmware images must be at least 1 MiB',
-	    action:'Upload and Recover',
-		    notices:['Do not power off or reboot the device during recovery!','The system UBI partition is fully erased and rebuilt.','The image must match the XG2010G embedded device tree.','The device restarts automatically when recovery completes.']
+    scope:'擦除并重新创建完整的 system UBI 分区',
+    preserve:'Recovery 环境位于 mtd4/recovery-env',
+    help:'固件镜像大小至少为 1 MiB',
+    action:'上传并恢复',
+		    notices:['恢复过程中请勿断电或重启设备！','system UBI 分区将被完全擦除并重建。','镜像必须匹配 XG2010G 内置设备树。','恢复完成后设备将自动重启。']
   },
   uboot:{
-	    title:'Update U-Boot',
-	    copy:'Upload an XG2010G chainloader slot image. Only the raw U-Boot slot will be written.',
+	    title:'更新 U-Boot',
+	    copy:'上传 XG2010G chainloader 槽位镜像。只会写入原始 U-Boot 槽位。',
 	    target:'SPI-NAND @ 0x600000',
-	    scope:'Write the 1 MiB chainloader slot',
-	    preserve:'All UBI firmware volumes and configuration data',
-	    help:'Use XG2010G-uboot-flash-slot.bin, not the bare chainloader FIT',
-	    action:'Upload and Update',
-	    notices:['Do not power off or reboot the device during the U-Boot update!','The image format is validated before writing.','UBI firmware volumes are not modified.']
+	    scope:'写入 2 MiB chainloader 槽位',
+	    preserve:'所有 UBI 固件卷和配置数据',
+	    help:'请使用 XG2010G-uboot-flash-slot.bin，不要使用裸 chainloader FIT格式镜像',
+	    action:'上传并更新',
+	    notices:['更新 U-Boot 时请勿断电或重启设备！','写入前会验证镜像格式。','不会修改 UBI 固件卷。']
 	  }
 };
 
 var layouts={
-  '2.0':{part:'system',size:'439 MiB',end:'0x1be00000',help:'XG2010G UBI 2.0 layout: system @ 0x00700000 size 0x1b700000, with 66 MiB reserved for vendor BMT/BBT.'}
+  '2.0':{part:'system',size:'436 MiB',end:'0x1be00000',help:'XG2010G UBI 2.0 布局：system 位于 0x00a00000，大小 0x1b400000，末尾保留 66 MiB 用于原厂 BMT/BBT。'}
 };
 
 var fileInput=document.getElementById('file-input');
@@ -548,8 +548,8 @@ function formatBytes(bytes){
 
 function fileError(){
   if(!selectedFile)return'';
-  if(activeTarget==='firmware'&&selectedFile.size<1024*1024)return'Firmware images must be at least 1 MiB.';
-  if(activeTarget==='uboot'&&selectedFile.size>1024*1024)return'U-Boot images must not exceed 1 MiB.';
+  if(activeTarget==='firmware'&&selectedFile.size<1024*1024)return'固件镜像大小至少为 1 MiB。';
+  if(activeTarget==='uboot'&&selectedFile.size>2*1024*1024)return'U-Boot 镜像不能超过 2 MiB。';
   return'';
 }
 
@@ -557,21 +557,21 @@ function validateFile(){
   var error=fileError();
   fileHelp.className='file-help';
   if(!selectedFile){
-    fileName.textContent='No file selected';
+    fileName.textContent='未选择文件';
     fileName.className='file-name';
     fileHelp.textContent=profile().help;
-    statusMessage.textContent='Select an image file.';
+    statusMessage.textContent='请选择镜像文件。';
   }else{
     fileName.textContent=selectedFile.name+'  ('+formatBytes(selectedFile.size)+')';
     fileName.className='file-name selected';
     if(error){
       fileHelp.textContent=error;
       fileHelp.classList.add('error');
-      statusMessage.textContent='The selected file does not meet the target requirements.';
+      statusMessage.textContent='所选文件不符合目标要求。';
     }else{
-      fileHelp.textContent='File ready.';
+      fileHelp.textContent='文件已就绪。';
       fileHelp.classList.add('ok');
-      statusMessage.textContent='Ready to upload.';
+      statusMessage.textContent='可以上传。';
     }
   }
   uploadButton.disabled=busy||!selectedFile||!!error;
@@ -604,7 +604,7 @@ function resetProgress(){
   setProgress('upload',0,'');
   setProgress('erase',0,'');
   setProgress('write',0,'');
-  setState('Idle','idle',selectedFile?'Ready to upload.':'Select an image file.');
+  setState('空闲','idle',selectedFile?'可以上传。':'请选择镜像文件。');
 }
 
 function updateFlashProgress(data){
@@ -613,18 +613,18 @@ function updateFlashProgress(data){
     setProgress('upload',100,'complete');
     setProgress('erase',data.erase_total?data.erase_done*100/data.erase_total:0,'active');
     setProgress('write',0,'');
-    setState('Erasing','working','Erasing the target region. Do not power off the device.');
+    setState('擦除中','working','正在擦除目标区域，请勿断电。');
   }else if(phase===2){
     setProgress('upload',100,'complete');
     setProgress('erase',100,'complete');
     setProgress('write',data.write_total?data.write_done*100/data.write_total:0,'active');
-    setState('Writing','working','Writing the image. Do not power off the device.');
+    setState('写入中','working','正在写入镜像，请勿断电。');
   }
 }
 
 function startCountdown(seconds){
   function tick(left){
-    setState('Complete','success','Recovery complete. The device restarts in '+left+' seconds.');
+    setState('完成','success','恢复完成，设备将在 '+left+' 秒后重启。');
     if(left>0)setTimeout(function(){tick(left-1)},1000);
   }
   tick(seconds);
@@ -635,7 +635,7 @@ function startRebootCountdown(seconds){
     var message=left>0
       ?'Restarting into the system in '+left+' seconds.'
       :'The device is restarting. Reconnect after the system finishes booting.';
-    setState('Rebooting','working',message);
+    setState('重启中','working',message);
     if(left>0)setTimeout(function(){tick(left-1)},1000);
   }
   tick(seconds);
@@ -643,9 +643,9 @@ function startRebootCountdown(seconds){
 
 async function rebootToSystem(){
   if(busy)return;
-  if(!window.confirm('Reboot the device and continue normal startup? Make sure the recovery button is released.'))return;
+  if(!window.confirm('重启设备并继续正常启动？请确认已松开恢复按键。'))return;
   setBusy(true);
-  setState('Rebooting','working','Sending the reboot request.');
+  setState('重启中','working','正在发送重启请求。');
   try{
     var response=await fetch('/reboot',{method:'POST',body:'',cache:'no-store'});
     await response.text();
@@ -653,7 +653,7 @@ async function rebootToSystem(){
     startRebootCountdown(3);
   }catch(error){
     setBusy(false);
-    setState('Failed','error','The reboot request was not accepted. Try again.');
+    setState('失败','error','重启请求未被接受，请重试。');
   }
 }
 
@@ -677,7 +677,7 @@ async function pollStatus(epoch){
       pollOutcome=-1;
       if(pollTimer)clearInterval(pollTimer);
       pollTimer=null;
-      setState('Failed','error','Recovery failed. Check the serial console log.');
+      setState('失败','error','恢复失败，请检查串口日志。');
       setBusy(false);
     }
   }catch(error){}
@@ -700,13 +700,13 @@ async function upload(){
   if(pollTimer)clearInterval(pollTimer);
   pollTimer=null;
   setProgress('upload',0,'active');
-  setState('Uploading','working','Uploading the image file.');
+  setState('上传中','working','正在上传镜像文件。');
 
   var payload;
   try{
     payload=await selectedFile.arrayBuffer();
   }catch(error){
-    setState('Failed','error','Could not read the selected file.');
+    setState('失败','error','无法读取所选文件。');
     setBusy(false);
     return;
   }
@@ -724,20 +724,20 @@ async function upload(){
   });
   xhr.addEventListener('load',function(){
     if(xhr.status<200||xhr.status>=300){
-      setState('Rejected','error','The server rejected this image. Check the file and try again.');
+      setState('已拒绝','error','服务器拒绝了该镜像，请检查文件后重试。');
       setBusy(false);
       return;
     }
     setProgress('upload',100,'complete');
-    startStatusPolling(pollEpoch,'Processing','Upload complete. Waiting for erase and write operations.');
+    startStatusPolling(pollEpoch,'处理中','上传完成，等待擦除和写入操作。');
   });
   xhr.addEventListener('error',function(){
     if(uploadSent){
       setProgress('upload',100,'complete');
-      startStatusPolling(pollEpoch,'Checking Status','Upload was sent, but confirmation was interrupted. Do not power off or retry.');
+      startStatusPolling(pollEpoch,'检查状态','上传已发送，但确认过程被中断。请勿断电或重试。');
       return;
     }
-    setState('Network Error','error','The upload connection failed before the image was sent. Reconnect and try again.');
+    setState('网络错误','error','镜像发送前上传连接失败，请重新连接后重试。');
     setBusy(false);
   });
 	  var uploadUri='/upload/'+activeTarget;

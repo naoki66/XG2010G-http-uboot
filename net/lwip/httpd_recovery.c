@@ -64,7 +64,7 @@ const char *an7581_release_credit(void);
 /* Default maximum upload size in bytes (override with env 'recovery_max') */
 #define RECOVERY_UPLOAD_MAX    (64 * 1024 * 1024UL)
 #define RECOVERY_MIN_FIRMWARE_SIZE (1 * 1024 * 1024UL)
-#define RECOVERY_MAX_UBOOT_SIZE    (1 * 1024 * 1024UL)
+#define RECOVERY_MAX_UBOOT_SIZE    (2 * 1024 * 1024UL)
 
 /* Delay before reboot after flashing completes, to let browser finish reads */
 #define REBOOT_DELAY_MS        3000
