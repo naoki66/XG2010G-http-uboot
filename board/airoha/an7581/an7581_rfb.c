@@ -604,24 +604,17 @@ int run_http_recovery(void);
 
 static int xg2010g_recovery_button_pressed(void)
 {
-	struct gpio_desc rec_gpio;
 	ofnode root;
-	int ret;
 
-	if (!xg2010g_is_compatible() && !xg2010g_is_compatible())
-		return 0;
-
-	memset(&rec_gpio, 0, sizeof(rec_gpio));
+	/*
+	 * The board reset key is the physical SoC GPIO0. The generic
+	 * en7581 pinctrl GPIO child is exposed with gpio_offs=13, so a DT cell
+	 * of <0> is not physical GPIO0 through the DM GPIO API. Prefer the
+	 * board-level register path; it also restores the GPIO mux before
+	 * sampling the key.
+	 */
 	root = ofnode_path("/");
-	ret = gpio_request_by_name_nodev(root, "recovery-gpios", 0, &rec_gpio,
-					 GPIOD_IS_IN);
-	if (ret)
-		return xg2010g_recovery_button_pressed_raw(root);
-
-	ret = dm_gpio_get_value(&rec_gpio);
-	dm_gpio_free(NULL, &rec_gpio);
-
-	return ret > 0;
+	return xg2010g_recovery_button_pressed_raw(root);
 }
 
 int board_late_init(void)
