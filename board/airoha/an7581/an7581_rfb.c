@@ -44,14 +44,29 @@ DECLARE_GLOBAL_DATA_PTR;
 #define XG2010G_FACTORY_WAN_MAC_OFFSET	0x5000
 #define XG2010G_FACTORY_LAN_MAC_OFFSET	0x6000
 #define XG2010G_FACTORY_SIZE		(XG2010G_FACTORY_LAN_MAC_OFFSET + ARP_HLEN)
-#define XG2010G_FACTORY_ONU_TYPE_MAX	8
-#define XG2010G_FACTORY_SERDES_MAX	8
+#define XG2010G_FACTORY_BOOTARG_MAX	32
+#define XG2010G_FACTORY_BOOTARG_VALUE_MAX	192
 
-/* These values identify the production PON/SerDes mode.  Keep them separate
- * from recovery-env so a recovery setting cannot accidentally be persisted
- * as a vendor configuration. */
-static char xg2010g_factory_onu_type[XG2010G_FACTORY_ONU_TYPE_MAX];
-static char xg2010g_factory_serdes_ethernet[XG2010G_FACTORY_SERDES_MAX];
+/* Keep only factory values that are boot parameters for the current FIT.
+ * In particular, do not carry bootcmd/root or recovery/network state from
+ * the vendor environment into the new UBI boot flow. */
+static const char *const xg2010g_factory_bootarg_names[] = {
+	"sdram_conf", "vendor_name", "product_name", "ubi.mtd",
+	"ethaddr", "snmp_sysobjid", "country_code", "ether_gpio",
+	"power_gpio", "dsl_gpio", "internet_gpio", "multi_upgrade_gpio",
+	"onu_type", "qdma_init", "console", "bootflag", "serdes_sel",
+	"serdes_pon", "serdes_ethernet", "serdes_wifi1", "serdes_wifi2",
+	"serdes_usb1", "serdes_usb2",
+};
+
+struct xg2010g_factory_bootarg {
+	const char *name;
+	char value[XG2010G_FACTORY_BOOTARG_VALUE_MAX];
+};
+
+static struct xg2010g_factory_bootarg
+	xg2010g_factory_bootargs[XG2010G_FACTORY_BOOTARG_MAX];
+static size_t xg2010g_factory_bootarg_count;
 
 struct xg2010g_ubi_layout {
 	const char *version;
@@ -353,26 +368,14 @@ static int xg2010g_factory_env_get(const u8 *env, size_t env_len,
 	return -ENOENT;
 }
 
-static bool xg2010g_valid_hex_value(const char *value, size_t expected_len)
-{
-	size_t i;
-
-	if (!value || strlen(value) != expected_len)
-		return false;
-	for (i = 0; i < expected_len; i++)
-		if (!isxdigit((unsigned char)value[i]))
-			return false;
-	return true;
-}
-
-/* Read only the production values that must be reflected in the FIT DTB. */
+/* Read the compatible production boot parameters without importing vendor
+ * commands, temporary network state, or the legacy mtdblock root setting. */
 static void xg2010g_load_factory_bootargs(void)
 {
 	struct mtd_info *mtd;
 	u8 *buf;
 	u32 stored_crc;
-	char onu_type[XG2010G_FACTORY_ONU_TYPE_MAX];
-	char serdes_ethernet[XG2010G_FACTORY_SERDES_MAX];
+	size_t i;
 	int ret;
 
 	mtd_probe_devices();
@@ -395,25 +398,24 @@ static void xg2010g_load_factory_bootargs(void)
 				CONFIG_ENV_SIZE - sizeof(u32)))
 		goto out_free;
 
-	if (!xg2010g_factory_env_get(buf, CONFIG_ENV_SIZE, "onu_type",
-				      onu_type, sizeof(onu_type)) &&
-	    xg2010g_valid_hex_value(onu_type, 2)) {
-		strlcpy(xg2010g_factory_onu_type, onu_type,
-			 sizeof(xg2010g_factory_onu_type));
-	}
-	if (!xg2010g_factory_env_get(buf, CONFIG_ENV_SIZE, "serdes_ethernet",
-				      serdes_ethernet, sizeof(serdes_ethernet)) &&
-	    xg2010g_valid_hex_value(serdes_ethernet, 3)) {
-		strlcpy(xg2010g_factory_serdes_ethernet, serdes_ethernet,
-			 sizeof(xg2010g_factory_serdes_ethernet));
+	xg2010g_factory_bootarg_count = 0;
+	for (i = 0; i < ARRAY_SIZE(xg2010g_factory_bootarg_names) &&
+	     i < XG2010G_FACTORY_BOOTARG_MAX; i++) {
+		char *value = xg2010g_factory_bootargs[
+			xg2010g_factory_bootarg_count].value;
+
+		if (xg2010g_factory_env_get(buf, CONFIG_ENV_SIZE,
+					    xg2010g_factory_bootarg_names[i], value,
+					    XG2010G_FACTORY_BOOTARG_VALUE_MAX))
+			continue;
+		xg2010g_factory_bootargs[xg2010g_factory_bootarg_count].name =
+			xg2010g_factory_bootarg_names[i];
+		xg2010g_factory_bootarg_count++;
 	}
 
-	if (xg2010g_factory_onu_type[0] ||
-	    xg2010g_factory_serdes_ethernet[0])
-		printf("XG2010G: factory mode onu_type=%s serdes_ethernet=%s\n",
-		       xg2010g_factory_onu_type[0] ? xg2010g_factory_onu_type : "-",
-		       xg2010g_factory_serdes_ethernet[0] ?
-		       xg2010g_factory_serdes_ethernet : "-");
+	if (xg2010g_factory_bootarg_count)
+		printf("XG2010G: loaded %zu compatible factory boot parameters\n",
+		       xg2010g_factory_bootarg_count);
 
 out_free:
 	free(buf);
@@ -831,32 +833,21 @@ static int xg2010g_replace_fdt_bootarg(void *blob, const char *name,
 
 static void xg2010g_fixup_fdt_bootargs(void *blob)
 {
-	const char *onu_type;
-	const char *serdes_ethernet;
 	u8 lan_mac[ARP_HLEN];
 	char mac_str[ARP_HLEN_ASCII + 1];
+	size_t i;
 	int ret;
 
 	if (!xg2010g_is_compatible())
 		return;
 
-	onu_type = xg2010g_factory_onu_type[0] ? xg2010g_factory_onu_type :
-		   env_get("onu_type");
-	if (onu_type && *onu_type) {
-		ret = xg2010g_replace_fdt_bootarg(blob, "onu_type", onu_type);
+	for (i = 0; i < xg2010g_factory_bootarg_count; i++) {
+		ret = xg2010g_replace_fdt_bootarg(blob,
+						  xg2010g_factory_bootargs[i].name,
+						  xg2010g_factory_bootargs[i].value);
 		if (ret)
-			printf("XG2010G: failed to update bootargs onu_type: %d\n",
-			       ret);
-	}
-
-	serdes_ethernet = xg2010g_factory_serdes_ethernet[0] ?
-			  xg2010g_factory_serdes_ethernet : env_get("serdes_ethernet");
-	if (serdes_ethernet && *serdes_ethernet) {
-		ret = xg2010g_replace_fdt_bootarg(blob, "serdes_ethernet",
-						  serdes_ethernet);
-		if (ret)
-			printf("XG2010G: failed to update bootargs serdes_ethernet: %d\n",
-			       ret);
+			printf("XG2010G: failed to update bootargs %s: %d\n",
+			       xg2010g_factory_bootargs[i].name, ret);
 	}
 
 	if (!eth_env_get_enetaddr("ethaddr", lan_mac) ||
