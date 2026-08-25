@@ -79,7 +79,9 @@ if [ "$payload_size" -lt "$MIN_PAYLOAD_SIZE" ]; then
 fi
 
 control_fit_base=$("$FDTGET" -tx "$DTB" / fit-base)
-printf -v expected_fit_base '%x' $((0x81800000 + FIT_OFFSET))
+# The factory U-Boot command reads chainloader at +0x2100, so the FIT is
+# placed at loadaddr (0x81800000) by the time the shim runs.
+printf -v expected_fit_base '%x' 0x81800000
 if [ "$control_fit_base" != "$expected_fit_base" ]; then
   echo "Error: control DTB fit-base is 0x$control_fit_base; expected 0x$expected_fit_base" >&2
   exit 1
