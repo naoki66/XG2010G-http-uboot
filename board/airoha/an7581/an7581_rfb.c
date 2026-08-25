@@ -631,6 +631,14 @@ int board_late_init(void)
 	const char *bootcmd;
 	ulong recovery_addr;
 
+	/*
+	 * A blank/corrupt recovery-env must not prevent access to the console.
+	 * Keep board-late initialization out of the recovery path until the
+	 * built-in defaults have been saved to mtd4/recovery-env.
+	 */
+	if (gd->env_valid != ENV_VALID)
+		return 0;
+
 	printf("XG2010G release %s - %s\n",
 	       XG2010G_RELEASE_VERSION, XG2010G_RELEASE_CREDIT);
 	printf("XG2010G HTTP recovery: type 'http_recovery', then open http://192.168.255.1/ (PC 192.168.255.2/24)\n");
