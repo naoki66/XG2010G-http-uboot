@@ -691,6 +691,18 @@ int board_late_init(void)
 		printf("XG2010G: cleared legacy fdt_high override\n");
 	}
 	/*
+	 * The factory environment may carry a legacy bootargs value with
+	 * root=/dev/fit0, tclinux_info and ubi.block.  U-Boot gives that
+	 * environment string precedence over the FIT DTB, which makes the
+	 * ramdisk mount successfully and then panics while looking for fit0.
+	 * Recovery images keep the complete command line in the FIT DTB, so
+	 * discard the stale environment override on every boot.
+	 */
+	if (env_get("bootargs")) {
+		env_set("bootargs", NULL);
+		printf("XG2010G: cleared legacy bootargs override\n");
+	}
+	/*
 	 * Do not perform large raw NAND/UBI reads from board_late_init.  On this
 	 * board the first-stage loader may leave SNFI/DMA active; large early
 	 * reads can overwrite relocated U-Boot text before eth_initialize().
