@@ -358,6 +358,10 @@ static int xg2010g_factory_env_get(const u8 *env, size_t env_len,
 			copy_len = entry_end - equals - 1;
 			if (!copy_len || copy_len >= value_len)
 				return -EINVAL;
+			for (size_t i = 0; i < copy_len; i++)
+				if (data[equals - data + 1 + i] < 0x20 ||
+				    data[equals - data + 1 + i] > 0x7e)
+					return -EINVAL;
 			memcpy(value, equals + 1, copy_len);
 			value[copy_len] = '\0';
 			return 0;
@@ -375,28 +379,45 @@ static void xg2010g_load_factory_bootargs(void)
 	struct mtd_info *mtd;
 	u8 *buf;
 	u32 stored_crc;
+	size_t retlen;
 	size_t i;
 	int ret;
 
 	mtd_probe_devices();
 	mtd = get_mtd_device_nm(XG2010G_FACTORY_ENV_PART);
-	if (IS_ERR_OR_NULL(mtd))
+	if (IS_ERR_OR_NULL(mtd)) {
+		printf("XG2010G: factory env partition '%s' unavailable: %d\n",
+		       XG2010G_FACTORY_ENV_PART,
+		       IS_ERR(mtd) ? (int)PTR_ERR(mtd) : -ENODEV);
 		return;
-	if (mtd->size < CONFIG_ENV_SIZE)
+	}
+	if (mtd->size < CONFIG_ENV_SIZE) {
+		printf("XG2010G: factory env partition too small (%llu)\n",
+		       (unsigned long long)mtd->size);
 		goto out_put;
+	}
 
 	buf = malloc(CONFIG_ENV_SIZE);
-	if (!buf)
+	if (!buf) {
+		printf("XG2010G: unable to allocate factory env buffer\n");
 		goto out_put;
+	}
 
-	ret = xg2010g_mtd_read_logical(mtd, 0, CONFIG_ENV_SIZE, buf);
-	if (ret)
-		goto out_free;
+	/* The factory env is at offset zero of uenv.  Read it directly first;
+	 * this matches fw_env.config and avoids changing offsets on good blocks. */
+	ret = mtd_read(mtd, 0, CONFIG_ENV_SIZE, &retlen, buf);
+	if ((ret && ret != -EUCLEAN) || retlen != CONFIG_ENV_SIZE) {
+		ret = xg2010g_mtd_read_logical(mtd, 0, CONFIG_ENV_SIZE, buf);
+		if (ret) {
+			printf("XG2010G: factory env read failed: %d\n", ret);
+			goto out_free;
+		}
+	}
 
 	memcpy(&stored_crc, buf, sizeof(stored_crc));
 	if (stored_crc != crc32(0, buf + sizeof(u32),
 				CONFIG_ENV_SIZE - sizeof(u32)))
-		goto out_free;
+		printf("XG2010G: factory env CRC mismatch; validating entries\n");
 
 	xg2010g_factory_bootarg_count = 0;
 	for (i = 0; i < ARRAY_SIZE(xg2010g_factory_bootarg_names) &&
@@ -413,9 +434,8 @@ static void xg2010g_load_factory_bootargs(void)
 		xg2010g_factory_bootarg_count++;
 	}
 
-	if (xg2010g_factory_bootarg_count)
-		printf("XG2010G: loaded %zu compatible factory boot parameters\n",
-		       xg2010g_factory_bootarg_count);
+	printf("XG2010G: loaded %zu compatible factory boot parameters\n",
+	       xg2010g_factory_bootarg_count);
 
 out_free:
 	free(buf);
