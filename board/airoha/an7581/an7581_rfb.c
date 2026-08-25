@@ -642,7 +642,7 @@ int board_late_init(void)
 			printf("XG2010G: recovery-env initialization failed; console only\n");
 		else
 			printf("XG2010G: initialized recovery-env with default environment\n");
-		return 0;
+		/* Continue board initialization so DSD MACs are applied immediately. */
 	}
 
 	printf("XG2010G release %s - %s\n",
