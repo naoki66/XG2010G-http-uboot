@@ -458,32 +458,61 @@ var busy=false;
 var pollTimer=null;
 var pollEpoch=0;
 var pollOutcome=0;
+var langZh=/^zh(?:-|$)/i.test((navigator.languages&&navigator.languages[0])||navigator.language||navigator.userLanguage||'');
+function text(zh,en){return langZh?zh:en}
+function applyLanguage(){
+  document.documentElement.lang=langZh?'zh-CN':'en';
+  var labels={
+    '.brand strong':text('XG2010G 恢复模式','XG2010G Recovery Mode'),
+    '.brand span':text('恢复 Web 界面','Recovery WebUI'),
+    '.nav-button[data-target="firmware"]':text('恢复固件','Firmware Recovery'),
+    '.nav-button[data-target="uboot"]':text('更新 U-Boot','Update U-Boot'),
+    '#reboot-button':text('重启进入系统','Reboot to System'),
+    '#version':text('正在加载 U-Boot 版本...','Loading U-Boot version...'),
+    '#page-title':text('恢复固件','Firmware Recovery'),
+    '#page-copy':text('上传 OpenWrt FIT 镜像并重新创建 UBI 2.0 布局。','Upload an OpenWrt FIT image and recreate the UBI 2.0 layout.'),
+    '.target-label:nth-of-type(1)':text('目标','Target'),
+    '.target-label:nth-of-type(2)':text('操作','Operation'),
+    '.target-label:nth-of-type(3)':text('环境','Environment'),
+    '.target-label:nth-of-type(4)':text('检测结果','Detected'),
+    '.layout-label':text('镜像 UBI 布局','Image UBI layout'),
+    '#file-input + .file-row .choose-button':text('选择文件','Choose File'),
+    '#file-name':text('未选择文件','No file selected'),
+    '#upload-button':text('上传并恢复','Upload and Recover'),
+    '.progress-head strong':text('恢复进度','Recovery Progress'),
+    '#state':text('空闲','Idle'),
+    '#status-message':text('请选择镜像文件。','Select an image file.'),
+    '#row-upload .progress-label':text('上传','Upload'),
+    '#row-erase .progress-label':text('擦除','Erase'),
+    '#row-write .progress-label':text('写入','Write'),
+    '.notice strong':text('重要提示','Important')
+  };
+  Object.keys(labels).forEach(function(selector){var node=document.querySelector(selector);if(node)node.textContent=labels[selector]});
+  var notice=document.getElementById('notice-list');
+  if(notice){notice.innerHTML='';['恢复过程中请勿断电或重启设备！|Do not power off or reboot the device!','选定的 UBI 分区将被完全擦除并重建。|The selected UBI partition is fully erased and rebuilt.','所选布局必须与镜像内置的设备树匹配。|The selection must match the image embedded device tree.','恢复完成后设备将自动重启。|The device restarts automatically when recovery completes.'].forEach(function(item,i){var li=document.createElement('li');if(i===0)li.className='critical-warning';var pair=item.split('|');li.textContent=text(pair[0],pair[1]);notice.appendChild(li)})}
+}
 
 var profiles={
 	  firmware:{
-    title:'恢复固件',
-    copy:'上传 OpenWrt FIT 镜像并重新创建 UBI 2.0 布局。',
-	    target:'ubi:fit',
-    scope:'擦除并重新创建完整的 system UBI 分区',
-    preserve:'Recovery 环境位于 mtd4/recovery-env',
-    help:'固件镜像大小至少为 1 MiB',
-    action:'上传并恢复',
-		    notices:['恢复过程中请勿断电或重启设备！','system UBI 分区将被完全擦除并重建。','镜像必须匹配 XG2010G 内置设备树。','恢复完成后设备将自动重启。']
+	    zh:{
+	      title:'恢复固件',copy:'上传 OpenWrt FIT 镜像并重新创建 UBI 2.0 布局。',
+	      target:'ubi:fit',scope:'擦除并重新创建完整的 system UBI 分区',preserve:'Recovery 环境位于 mtd4/recovery-env',help:'固件镜像大小至少为 1 MiB',action:'上传并恢复',
+	      notices:['恢复过程中请勿断电或重启设备！','system UBI 分区将被完全擦除并重建。','镜像必须匹配 XG2010G 内置设备树。','恢复完成后设备将自动重启。']
+	    },
+	    en:{
+	      title:'Firmware Recovery',copy:'Upload an OpenWrt FIT image and recreate the UBI 2.0 layout.',
+	      target:'ubi:fit',scope:'Erase and recreate the complete system UBI partition',preserve:'Recovery environment: mtd4/recovery-env',help:'Firmware images must be at least 1 MiB',action:'Upload and Recover',
+	      notices:['Do not power off or reboot the device during recovery!','The system UBI partition is fully erased and rebuilt.','The image must match the XG2010G embedded device tree.','The device restarts automatically when recovery completes.']
+	    }
   },
   uboot:{
-	    title:'更新 U-Boot',
-	    copy:'上传 XG2010G chainloader 槽位镜像。只会写入原始 U-Boot 槽位。',
-	    target:'SPI-NAND @ 0x600000',
-	    scope:'写入 2 MiB chainloader 槽位',
-	    preserve:'所有 UBI 固件卷和配置数据',
-	    help:'请使用 XG2010G-uboot-flash-slot.bin，不要使用裸 chainloader FIT格式镜像',
-	    action:'上传并更新',
-	    notices:['更新 U-Boot 时请勿断电或重启设备！','写入前会验证镜像格式。','不会修改 UBI 固件卷。']
+	    zh:{title:'更新 U-Boot',copy:'上传 XG2010G chainloader 槽位镜像。只会写入原始 U-Boot 槽位。',target:'SPI-NAND @ 0x600000',scope:'写入 2 MiB chainloader 槽位',preserve:'所有 UBI 固件卷和配置数据',help:'请使用 XG2010G-uboot-flash-slot.bin，不要使用裸 chainloader FIT 格式镜像',action:'上传并更新',notices:['更新 U-Boot 时请勿断电或重启设备！','写入前会验证镜像格式。','不会修改 UBI 固件卷。']},
+	    en:{title:'Update U-Boot',copy:'Upload an XG2010G chainloader slot image. Only the raw U-Boot slot will be written.',target:'SPI-NAND @ 0x600000',scope:'Write the 2 MiB chainloader slot',preserve:'All UBI firmware volumes and configuration data',help:'Use XG2010G-uboot-flash-slot.bin, not the bare chainloader FIT',action:'Upload and Update',notices:['Do not power off or reboot the device during the U-Boot update!','The image format is validated before writing.','UBI firmware volumes are not modified.']}
 	  }
 };
 
 var layouts={
-  '2.0':{part:'system',size:'436 MiB',end:'0x1be00000',help:'XG2010G UBI 2.0 布局：system 位于 0x00a00000，大小 0x1b400000，末尾保留 66 MiB 用于原厂 BMT/BBT。'}
+  '2.0':{part:'system',size:'436 MiB',end:'0x1be00000',helpZh:'XG2010G UBI 2.0 布局：system 位于 0x00a00000，大小 0x1b400000，末尾保留 66 MiB 用于原厂 BMT/BBT。',helpEn:'XG2010G UBI 2.0 layout: system @ 0x00a00000 size 0x1b400000, with 66 MiB reserved for vendor BMT/BBT.'}
 };
 
 var fileInput=document.getElementById('file-input');
@@ -497,12 +526,12 @@ var layoutHelp=document.getElementById('layout-help');
 var state=document.getElementById('state');
 var statusMessage=document.getElementById('status-message');
 
-function profile(){return profiles[activeTarget]}
+function profile(){var p=profiles[activeTarget];return p[langZh?'zh':'en']}
 
 function updateLayout(){
   var layout=layouts[selectedLayout]||layouts['2.0'];
   layoutBlock.hidden=activeTarget!=='firmware';
-  layoutHelp.textContent=layout.help;
+  layoutHelp.textContent=langZh?layout.helpZh:layout.helpEn;
   layoutHelp.className='layout-help'+(layout.warning?' warning':'');
   if(activeTarget==='firmware'){
     document.getElementById('target-value').textContent=layout.part+':fit ('+layout.size+', ends '+layout.end+')';
@@ -548,8 +577,8 @@ function formatBytes(bytes){
 
 function fileError(){
   if(!selectedFile)return'';
-  if(activeTarget==='firmware'&&selectedFile.size<1024*1024)return'固件镜像大小至少为 1 MiB。';
-  if(activeTarget==='uboot'&&selectedFile.size>2*1024*1024)return'U-Boot 镜像不能超过 2 MiB。';
+  if(activeTarget==='firmware'&&selectedFile.size<1024*1024)return text('固件镜像大小至少为 1 MiB.','Firmware images must be at least 1 MiB.');
+  if(activeTarget==='uboot'&&selectedFile.size>2*1024*1024)return text('U-Boot 镜像不能超过 2 MiB。','U-Boot images must not exceed 2 MiB.');
   return'';
 }
 
@@ -557,21 +586,21 @@ function validateFile(){
   var error=fileError();
   fileHelp.className='file-help';
   if(!selectedFile){
-    fileName.textContent='未选择文件';
+    fileName.textContent=text('未选择文件','No file selected');
     fileName.className='file-name';
     fileHelp.textContent=profile().help;
-    statusMessage.textContent='请选择镜像文件。';
+    statusMessage.textContent=text('请选择镜像文件。','Select an image file.');
   }else{
     fileName.textContent=selectedFile.name+'  ('+formatBytes(selectedFile.size)+')';
     fileName.className='file-name selected';
     if(error){
       fileHelp.textContent=error;
       fileHelp.classList.add('error');
-      statusMessage.textContent='所选文件不符合目标要求。';
+      statusMessage.textContent=text('所选文件不符合目标要求。','The selected file does not meet the target requirements.');
     }else{
-      fileHelp.textContent='文件已就绪。';
+      fileHelp.textContent=text('文件已就绪。','File ready.');
       fileHelp.classList.add('ok');
-      statusMessage.textContent='可以上传。';
+      statusMessage.textContent=text('可以上传。','Ready to upload.');
     }
   }
   uploadButton.disabled=busy||!selectedFile||!!error;
@@ -604,7 +633,7 @@ function resetProgress(){
   setProgress('upload',0,'');
   setProgress('erase',0,'');
   setProgress('write',0,'');
-  setState('空闲','idle',selectedFile?'可以上传。':'请选择镜像文件。');
+  setState(text('空闲','Idle'),'idle',selectedFile?text('可以上传。','Ready to upload.'):text('请选择镜像文件。','Select an image file.'));
 }
 
 function updateFlashProgress(data){
@@ -613,18 +642,18 @@ function updateFlashProgress(data){
     setProgress('upload',100,'complete');
     setProgress('erase',data.erase_total?data.erase_done*100/data.erase_total:0,'active');
     setProgress('write',0,'');
-    setState('擦除中','working','正在擦除目标区域，请勿断电。');
+    setState(text('擦除中','Erasing'),'working',text('正在擦除目标区域，请勿断电。','Erasing the target region. Do not power off the device.'));
   }else if(phase===2){
     setProgress('upload',100,'complete');
     setProgress('erase',100,'complete');
     setProgress('write',data.write_total?data.write_done*100/data.write_total:0,'active');
-    setState('写入中','working','正在写入镜像，请勿断电。');
+    setState(text('写入中','Writing'),'working',text('正在写入镜像，请勿断电。','Writing the image. Do not power off the device.'));
   }
 }
 
 function startCountdown(seconds){
   function tick(left){
-    setState('完成','success','恢复完成，设备将在 '+left+' 秒后重启。');
+    setState(text('完成','Complete'),'success',langZh?'恢复完成，设备将在 '+left+' 秒后重启。':'Recovery complete. The device restarts in '+left+' seconds.');
     if(left>0)setTimeout(function(){tick(left-1)},1000);
   }
   tick(seconds);
@@ -635,7 +664,7 @@ function startRebootCountdown(seconds){
     var message=left>0
       ?'Restarting into the system in '+left+' seconds.'
       :'The device is restarting. Reconnect after the system finishes booting.';
-    setState('重启中','working',message);
+    setState(text('重启中','Rebooting'),'working',langZh?('设备将在 '+left+' 秒后重启。'):message);
     if(left>0)setTimeout(function(){tick(left-1)},1000);
   }
   tick(seconds);
@@ -643,9 +672,9 @@ function startRebootCountdown(seconds){
 
 async function rebootToSystem(){
   if(busy)return;
-  if(!window.confirm('重启设备并继续正常启动？请确认已松开恢复按键。'))return;
+  if(!window.confirm(text('重启设备并继续正常启动？请确认已松开恢复按键。','Reboot the device and continue normal startup? Make sure the recovery button is released.')))return;
   setBusy(true);
-  setState('重启中','working','正在发送重启请求。');
+  setState(text('重启中','Rebooting'),'working',text('正在发送重启请求。','Sending the reboot request.'));
   try{
     var response=await fetch('/reboot',{method:'POST',body:'',cache:'no-store'});
     await response.text();
@@ -653,7 +682,7 @@ async function rebootToSystem(){
     startRebootCountdown(3);
   }catch(error){
     setBusy(false);
-    setState('失败','error','重启请求未被接受，请重试。');
+    setState(text('失败','Failed'),'error',text('重启请求未被接受，请重试。','The reboot request was not accepted. Try again.'));
   }
 }
 
@@ -677,7 +706,7 @@ async function pollStatus(epoch){
       pollOutcome=-1;
       if(pollTimer)clearInterval(pollTimer);
       pollTimer=null;
-      setState('失败','error','恢复失败，请检查串口日志。');
+      setState(text('失败','Failed'),'error',text('恢复失败，请检查串口日志。','Recovery failed. Check the serial console log.'));
       setBusy(false);
     }
   }catch(error){}
@@ -700,13 +729,13 @@ async function upload(){
   if(pollTimer)clearInterval(pollTimer);
   pollTimer=null;
   setProgress('upload',0,'active');
-  setState('上传中','working','正在上传镜像文件。');
+  setState(text('上传中','Uploading'),'working',text('正在上传镜像文件。','Uploading the image file.'));
 
   var payload;
   try{
     payload=await selectedFile.arrayBuffer();
   }catch(error){
-    setState('失败','error','无法读取所选文件。');
+    setState(text('失败','Failed'),'error',text('无法读取所选文件。','Could not read the selected file.'));
     setBusy(false);
     return;
   }
@@ -724,20 +753,20 @@ async function upload(){
   });
   xhr.addEventListener('load',function(){
     if(xhr.status<200||xhr.status>=300){
-      setState('已拒绝','error','服务器拒绝了该镜像，请检查文件后重试。');
+      setState(text('已拒绝','Rejected'),'error',text('服务器拒绝了该镜像，请检查文件后重试。','The server rejected this image. Check the file and try again.'));
       setBusy(false);
       return;
     }
     setProgress('upload',100,'complete');
-    startStatusPolling(pollEpoch,'处理中','上传完成，等待擦除和写入操作。');
+    startStatusPolling(pollEpoch,text('处理中','Processing'),text('上传完成，等待擦除和写入操作。','Upload complete. Waiting for erase and write operations.'));
   });
   xhr.addEventListener('error',function(){
     if(uploadSent){
       setProgress('upload',100,'complete');
-      startStatusPolling(pollEpoch,'检查状态','上传已发送，但确认过程被中断。请勿断电或重试。');
+      startStatusPolling(pollEpoch,text('检查状态','Checking Status'),text('上传已发送，但确认过程被中断。请勿断电或重试。','Upload was sent, but confirmation was interrupted. Do not power off or retry.'));
       return;
     }
-    setState('网络错误','error','镜像发送前上传连接失败，请重新连接后重试。');
+    setState(text('网络错误','Network Error'),'error',text('镜像发送前上传连接失败，请重新连接后重试。','The upload connection failed before the image was sent. Reconnect and try again.'));
     setBusy(false);
   });
 	  var uploadUri='/upload/'+activeTarget;
@@ -757,6 +786,7 @@ uploadButton.addEventListener('click',upload);
 rebootButton.addEventListener('click',rebootToSystem);
 
 (async function(){
+  applyLanguage();
   setTarget('firmware');
   try{
     var response=await fetch('/about',{cache:'no-store'});
