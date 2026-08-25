@@ -818,6 +818,11 @@ int board_late_init(void)
 	 * definitions so the production FIT can be booted without erasing env. */
 	if (!env_get("ubi_read_production"))
 		env_set("ubi_read_production", "ubi read ${loadaddr} fit");
+	/* The factory and Recovery U-Boots share the persistent environment.
+	 * Older environments do not have bootconf, which expands the recovery
+	 * command to `bootm ${loadaddr}#` and makes FIT selection fail. */
+	if (!env_get("bootconf"))
+		env_set("bootconf", "config-1");
 	bootcmd = env_get("boot_production");
 	/* Older environments may already contain boot_production, but omit the
 	 * FIT configuration selector.  bootm then fails even though iminfo sees a
