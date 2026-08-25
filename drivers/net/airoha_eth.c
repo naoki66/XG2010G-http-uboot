@@ -6567,8 +6567,19 @@ static void airoha_qdma_sync_rx_head(struct airoha_qdma *qdma,
 
 static void airoha_qdma_stop_dma(struct airoha_qdma *qdma)
 {
-	u32 val;
+	u32 val, cfg;
 	int ret;
+
+	/*
+	 * EN7581 can expose a stale RX_DMA_BUSY bit while both DMA engines
+	 * are already disabled (for example after the bootloader or a prior
+	 * recovery session).  There is nothing to drain in that state, and
+	 * polling BUSY only produces a misleading timeout warning.
+	 */
+	cfg = airoha_qdma_rr(qdma, REG_QDMA_GLOBAL_CFG);
+	if (!(cfg & (GLOBAL_CFG_TX_DMA_EN_MASK |
+		     GLOBAL_CFG_RX_DMA_EN_MASK)))
+		return;
 
 	airoha_qdma_clear(qdma, REG_QDMA_GLOBAL_CFG,
 			  GLOBAL_CFG_TX_DMA_EN_MASK |
