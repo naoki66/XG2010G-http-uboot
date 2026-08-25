@@ -386,10 +386,12 @@ static void xg2010g_load_factory_bootargs(void)
 	mtd_probe_devices();
 	mtd = get_mtd_device_nm(XG2010G_FACTORY_ENV_PART);
 	if (IS_ERR_OR_NULL(mtd)) {
-		printf("XG2010G: factory env partition '%s' unavailable: %d\n",
+		printf("XG2010G: factory env partition '%s' unavailable: %d; trying mtd1\n",
 		       XG2010G_FACTORY_ENV_PART,
 		       IS_ERR(mtd) ? (int)PTR_ERR(mtd) : -ENODEV);
-		return;
+		mtd = get_mtd_device(NULL, 1);
+		if (IS_ERR_OR_NULL(mtd))
+			return;
 	}
 	if (mtd->size < CONFIG_ENV_SIZE) {
 		printf("XG2010G: factory env partition too small (%llu)\n",
