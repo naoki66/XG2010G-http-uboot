@@ -730,7 +730,9 @@ static struct mtd_info *allocate_partition(struct mtd_info *master,
 		slave->erasesize = master->erasesize;
 	}
 
-	if ((slave->flags & MTD_WRITEABLE) &&
+	/* Some SPI-NAND controllers report the erase geometry late.  Do not
+	 * dereference a zero erase size while registering early partitions. */
+	if ((slave->flags & MTD_WRITEABLE) && slave->erasesize &&
 	    mtd_mod_by_eb(slave->offset, slave)) {
 		/* Doesn't start on a boundary of major erase size */
 		/* FIXME: Let it be writable if it is on a boundary of
@@ -739,7 +741,7 @@ static struct mtd_info *allocate_partition(struct mtd_info *master,
 		printk(KERN_WARNING"mtd: partition \"%s\" doesn't start on an erase block boundary -- force read-only\n",
 			part->name);
 	}
-	if ((slave->flags & MTD_WRITEABLE) &&
+	if ((slave->flags & MTD_WRITEABLE) && slave->erasesize &&
 	    mtd_mod_by_eb(slave->size, slave)) {
 		slave->flags &= ~MTD_WRITEABLE;
 		printk(KERN_WARNING"mtd: partition \"%s\" doesn't end on an erase block -- force read-only\n",
